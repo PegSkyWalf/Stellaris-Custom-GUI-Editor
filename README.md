@@ -78,14 +78,24 @@ python main.py
 
 ## 分发版（免安装 EXE）
 
-无需 Python 的 Windows 安装包构建方式：
+### 下载现成的 EXE
 
-```bash
-# 一键构建
-packaging\build_windows.bat
-```
+前往 [Releases](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases) 下载最新版 ZIP，**解压后再运行 EXE**。
 
-产物在 `dist\StellarisGUIEditor\`，将整个文件夹压缩为 ZIP 分发给用户。
+> ⚠️ **重要**：必须解压整个 ZIP，不能只复制 `.exe` 文件单独运行。  
+> EXE 文件旁边的 `_internal\` 目录包含所有必要的运行时库，缺少它将无法启动。
+
+### 自行编译
+
+1. 安装 [Python 3.10+](https://www.python.org/downloads/)（安装时勾选 **Add Python to PATH**）
+2. 克隆仓库：
+   ```bash
+   git clone https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor.git
+   cd Stellaris-Custom-GUI-Editor
+   ```
+3. **双击项目根目录的 `build.bat`** — 自动安装依赖、编译、打包为 ZIP
+
+编译产物在 `dist\StellarisGUIEditor\`，同时会生成一个 `StellarisCustomGUIEditor_v*.zip` 可直接分发。
 
 > 详见 [docs/development.md](docs/development.md)
 
