@@ -87,7 +87,7 @@ python main.py
 
 ### 自行编译
 
-1. 安装 [Python 3.10+](https://www.python.org/downloads/)（安装时勾选 **Add Python to PATH**）
+1. 安装 [Python 3.10+](https://www.python.org/downloads/)（建议勾选 **Add Python to PATH**；未勾选也可，只要安装了 `py launcher`）
 2. 克隆仓库：
    ```bash
    git clone https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor.git
@@ -95,7 +95,7 @@ python main.py
    ```
 3. **双击项目根目录的 `build.bat`** — 自动安装依赖、编译、打包为 ZIP
 
-编译产物在 `dist\StellarisGUIEditor\`，同时会生成一个 `StellarisCustomGUIEditor_v*.zip` 可直接分发。
+编译产物在 `dist\StellarisGUIEditor\`，同时会生成 `StellarisCustomGUIEditor_Windows.zip` 可直接分发。
 
 > 详见 [docs/development.md](docs/development.md)
 
