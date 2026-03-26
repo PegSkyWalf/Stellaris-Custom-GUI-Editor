@@ -1,0 +1,55 @@
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU General Public License is a free, copyleft license for
+software and other kinds of works.
+
+  For the precise terms and conditions for copying, distribution and
+modification, follow the GNU General Public License version 3:
+  https://www.gnu.org/licenses/gpl-3.0.html
+
+-------------------------------------------------------------------------------
+
+注意 / Note:
+
+本项目的源代码采用 GPL-3.0 协议授权，主要原因是本项目依赖 pydds 库，
+该库本身采用 GPLv3 授权。根据 GPL 条款，与 GPLv3 软件链接的程序
+在分发时整体必须遵循 GPLv3。
+
+The source code of this project is licensed under GPL-3.0, primarily because
+this project depends on the `pydds` library which is itself licensed under
+GPLv3. Under the terms of the GPL, programs linked with GPLv3 software must
+be distributed as a whole under GPLv3.
+
+第三方库许可证 / Third-party Licenses:
+  - pydds:    GPLv3+  (https://github.com/moonshadow565/pydds)
+  - PySide6:  LGPLv3 / Commercial  (https://www.qt.io/licensing/)
+  - Pillow:   HPND  (https://python-pillow.org/)
+  - numpy:    BSD 3-Clause
+  - imageio:  BSD 2-Clause
+
+-------------------------------------------------------------------------------
+
+Full license text: https://www.gnu.org/licenses/gpl-3.0.txt
+
+    Stellaris GUI Editor
+    Copyright (C) 2026  Community Contributors
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.

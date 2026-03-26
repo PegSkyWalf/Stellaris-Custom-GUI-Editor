@@ -1,0 +1,8 @@
+PySide6>=6.5.0
+Pillow>=10.0.0
+numpy>=1.24
+imageio>=2.31
+# DDS (BC7 / DX10 / Paint.NET 5 等)；与编辑器一同安装，打包进发行版时见 StellarisGUIEditor.spec
+pydds>=0.0.8
+# Optional (stronger PNG/BMP 等): pip install opencv-python-headless
+# Optional (ImageMagick bridge): pip install Wand  (requires ImageMagick on PATH)
