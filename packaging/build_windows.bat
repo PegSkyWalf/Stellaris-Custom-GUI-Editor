@@ -31,38 +31,21 @@ if not exist "requirements.txt" (
     exit /b 1
 )
 
-REM Detect Python interpreter with fallbacks:
-REM 1) python in PATH
-REM 2) py launcher default 3.x
-REM 3) py launcher pinned 3.11
-set "PY_CMD="
-where python > nul 2>&1
-if %errorlevel% equ 0 set "PY_CMD=python"
-
-if not defined PY_CMD (
-    py -3 --version > nul 2>&1
-    if %errorlevel% equ 0 set "PY_CMD=py -3"
-)
-
-if not defined PY_CMD (
-    py -3.11 --version > nul 2>&1
-    if %errorlevel% equ 0 set "PY_CMD=py -3.11"
-)
-
-if not defined PY_CMD (
-    echo [ERROR] Python not found.
-    echo [ERROR] Install Python 3.10+ OR install Python Launcher for Windows.
-    echo [INFO] Download: https://www.python.org/downloads/
+REM Check Python.
+python --version > nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Python not found in PATH.
+    echo [ERROR] Install Python 3.10+ and enable Add Python to PATH.
     pause
     exit /b 1
 )
 
-for /f "tokens=*" %%v in ('%PY_CMD% --version 2^>^&1') do set PY_VER=%%v
-echo [OK] %PY_VER%  ^(via "%PY_CMD%"^)
+for /f "tokens=*" %%v in ('python --version 2^>^&1') do set PY_VER=%%v
+echo [OK] %PY_VER%
 echo.
 
 echo [Step 1/5] Upgrading pip...
-%PY_CMD% -m pip install --upgrade pip -q
+python -m pip install --upgrade pip -q
 if %errorlevel% neq 0 (
     echo [ERROR] pip upgrade failed.
     pause
@@ -72,11 +55,11 @@ echo [OK] pip ready
 echo.
 
 echo [Step 2/5] Installing dependencies...
-%PY_CMD% -m pip install -r requirements.txt -q
+python -m pip install -r requirements.txt -q
 if %errorlevel% neq 0 (
     echo [ERROR] Dependency installation failed.
     echo [INFO] Try this command for full logs:
-    echo        %PY_CMD% -m pip install -r requirements.txt
+    echo        python -m pip install -r requirements.txt
     pause
     exit /b 1
 )
@@ -84,7 +67,7 @@ echo [OK] Dependencies installed
 echo.
 
 echo [Step 3/5] Installing PyInstaller...
-%PY_CMD% -m pip install pyinstaller -q
+python -m pip install pyinstaller -q
 if %errorlevel% neq 0 (
     echo [ERROR] PyInstaller installation failed.
     pause
@@ -94,7 +77,7 @@ echo [OK] PyInstaller ready
 echo.
 
 echo [Step 4/5] Generating app icon...
-%PY_CMD% packaging\create_icon.py
+python packaging\create_icon.py
 if %errorlevel% neq 0 (
     echo [WARNING] Icon generation failed, continue without custom icon.
 )
@@ -107,7 +90,7 @@ echo [OK] Cleaned
 echo.
 
 echo [Build] Running PyInstaller...
-%PY_CMD% -m PyInstaller StellarisGUIEditor.spec --noconfirm
+python -m PyInstaller StellarisGUIEditor.spec --noconfirm
 if %errorlevel% neq 0 (
     echo [ERROR] Build failed.
     pause
@@ -115,7 +98,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [Build] Copying runtime DLLs...
-for /f "tokens=*" %%p in ('%PY_CMD% -c "import sys,os;print(os.path.dirname(sys.executable))"') do set PYDIR=%%p
+for /f "tokens=*" %%p in ('python -c "import sys,os;print(os.path.dirname(sys.executable))"') do set PYDIR=%%p
 for %%D in (vcruntime140.dll vcruntime140_1.dll python3.dll) do (
     if exist "%PYDIR%\%%D" (
         copy /y "%PYDIR%\%%D" "dist\StellarisGUIEditor\%%D" > nul
