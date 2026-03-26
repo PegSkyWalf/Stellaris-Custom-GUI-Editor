@@ -1,4 +1,4 @@
-# 群星 GUI 编辑器 — 中文用户手册
+﻿# 群星自定义GUI编辑器 — 中文用户手册
 
 **版本**：1.0.0  
 **更新日期**：2026-03-26
@@ -40,7 +40,7 @@
 ```bash
 # 安装 Python 3.10+（https://www.python.org/）
 # 克隆项目
-git clone https://github.com/YOUR_ORG/StellarisGUIEditor.git
+git clone https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor.git
 cd StellarisGUIEditor
 
 # 安装依赖

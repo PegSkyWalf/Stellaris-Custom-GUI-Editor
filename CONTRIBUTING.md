@@ -1,7 +1,7 @@
 # 贡献指南 / Contributing Guide
 
-感谢你有兴趣为群星 GUI 编辑器做出贡献！  
-Thank you for your interest in contributing to the Stellaris GUI Editor!
+感谢你有兴趣为群星自定义 GUI 编辑器做出贡献！  
+Thank you for your interest in contributing to the Stellaris Custom-GUI Editor!
 
 ---
 
@@ -15,8 +15,8 @@ Thank you for your interest in contributing to the Stellaris GUI Editor!
 ### 克隆与安装
 
 ```bash
-git clone https://github.com/YOUR_ORG/StellarisGUIEditor.git
-cd StellarisGUIEditor
+git clone https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor.git
+cd Stellaris-Custom-GUI-Editor
 
 # 创建虚拟环境（推荐）
 python -m venv .venv

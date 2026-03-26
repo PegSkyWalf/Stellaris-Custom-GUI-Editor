@@ -65,3 +65,6 @@ extract_doc*.py
 # ── 生成的图标（由 create_icon.py 生成，推荐提交正式版本）──────
 # 若你有正式图标，注释掉下面这行以允许提交
 # assets/app_icon.ico
+
+# ── 作者私有文档（不上传 GitHub）─────────────────────────────────
+docs/OWNER_GUIDE.md

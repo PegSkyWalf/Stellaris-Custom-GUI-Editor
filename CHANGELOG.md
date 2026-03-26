@@ -54,5 +54,5 @@
 
 ---
 
-[Unreleased]: https://github.com/YOUR_ORG/StellarisGUIEditor/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/YOUR_ORG/StellarisGUIEditor/releases/tag/v1.0.0
+[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases/tag/v1.0.0

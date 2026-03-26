@@ -20,13 +20,13 @@ VSVersionInfo(
         StringTable(
           u'080404b0',
           [
-            StringStruct(u'CompanyName',      u'Stellaris Modding Community'),
-            StringStruct(u'FileDescription',  u'Stellaris GUI Editor - 群星GUI可视化编辑器'),
+            StringStruct(u'CompanyName',      u'SanZheFan (PegSkyWalf)'),
+            StringStruct(u'FileDescription',  u'Stellaris Custom-GUI Editor - 群星自定义GUI编辑器'),
             StringStruct(u'FileVersion',      u'1.0.0.0'),
-            StringStruct(u'InternalName',     u'StellarisGUIEditor'),
-            StringStruct(u'LegalCopyright',   u'GPL-3.0 License'),
+            StringStruct(u'InternalName',     u'StellarisCustomGUIEditor'),
+            StringStruct(u'LegalCopyright',   u'Copyright (C) 2026 SanZheFan. GPL-3.0 License.'),
             StringStruct(u'OriginalFilename', u'StellarisGUIEditor.exe'),
-            StringStruct(u'ProductName',      u'Stellaris GUI Editor'),
+            StringStruct(u'ProductName',      u'Stellaris Custom-GUI Editor'),
             StringStruct(u'ProductVersion',   u'1.0.0.0'),
           ]
         )

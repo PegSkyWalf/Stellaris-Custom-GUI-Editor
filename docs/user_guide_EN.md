@@ -1,4 +1,4 @@
-# Stellaris GUI Editor — User Manual (English)
+﻿# Stellaris Custom-GUI Editor — User Manual (English)
 
 **Version**: 1.0.0 | **Date**: 2026-03-26
 
@@ -23,7 +23,7 @@
 
 ### Option A: Pre-built EXE (Recommended for most users)
 
-1. Download the latest ZIP from [GitHub Releases](https://github.com/YOUR_ORG/StellarisGUIEditor/releases)
+1. Download the latest ZIP from [GitHub Releases](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
 2. Extract to any folder (e.g. `C:\Tools\StellarisGUIEditor\`)
 3. Double-click `StellarisGUIEditor.exe`
 
@@ -31,7 +31,7 @@
 
 ```bash
 # Requires Python 3.10+
-git clone https://github.com/YOUR_ORG/StellarisGUIEditor.git
+git clone https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor.git
 cd StellarisGUIEditor
 pip install -r requirements.txt
 python main.py

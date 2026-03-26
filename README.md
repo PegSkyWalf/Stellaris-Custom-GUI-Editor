@@ -1,8 +1,8 @@
-# 群星 GUI 编辑器 / Stellaris GUI Editor
+# 群星自定义GUI编辑器 / Stellaris Custom-GUI Editor
 
 **中文** | [English](#english)
 
-一个为群星（Stellaris）Mod 制作者设计的**可视化 GUI 编辑器**。  
+一个为群星（Stellaris）Mod 制作者设计的**可视化自定义 GUI 编辑器**。  
 无需手动编写繁琐的脚本代码，拖拽即可完成界面设计，实时预览精灵图渲染效果。
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
@@ -35,8 +35,8 @@
 ### 1. 安装
 
 ```bash
-git clone https://github.com/YOUR_ORG/StellarisGUIEditor.git
-cd StellarisGUIEditor
+git clone https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor.git
+cd Stellaris-Custom-GUI-Editor
 pip install -r requirements.txt
 ```
 
@@ -87,17 +87,25 @@ packaging\build_windows.bat
 
 产物在 `dist\StellarisGUIEditor\`，将整个文件夹压缩为 ZIP 分发给用户。
 
-> 详见 [docs/development.md](docs/development.md#打包发行)
+> 详见 [docs/development.md](docs/development.md)
+
+---
+
+## 免责声明
+
+本项目为开源社区工具，与 Paradox Interactive 无任何官方关联。  
+详见 [DISCLAIMER.md](DISCLAIMER.md)。
 
 ---
 
 ## 项目结构
 
 ```
-StellarisGUIEditor/
+Stellaris-Custom-GUI-Editor/
 ├── main.py                     # 程序入口
 ├── requirements.txt            # Python 依赖
 ├── StellarisGUIEditor.spec     # PyInstaller 打包配置
+├── DISCLAIMER.md               # 免责声明
 ├── assets/                     # 图标等静态资源
 ├── packaging/                  # 构建脚本
 │   ├── build_windows.bat       # Windows 一键构建
@@ -175,10 +183,21 @@ GPL-3.0 — 详见 [LICENSE](LICENSE)
 
 ## English
 
-A visual GUI editor for Stellaris mod creators. Design UI layouts with drag-and-drop, preview sprites in real-time, and generate `.gui` script files automatically.
+A visual custom GUI editor for Stellaris mod creators. Design UI layouts with drag-and-drop, preview sprites in real-time, and generate `.gui` script files automatically.
 
-**[Quick Start]** See the Chinese section above — commands are identical.  
+**[Quick Start]**
+
+```bash
+git clone https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor.git
+cd Stellaris-Custom-GUI-Editor
+pip install -r requirements.txt
+python main.py
+```
+
 **[User Manual]** [docs/user_guide_EN.md](docs/user_guide_EN.md)  
-**[Contributing]** [CONTRIBUTING.md](CONTRIBUTING.md)
+**[Contributing]** [CONTRIBUTING.md](CONTRIBUTING.md)  
+**[Disclaimer]** [DISCLAIMER.md](DISCLAIMER.md)
 
 **Key Features:** Visual canvas editing · DDS sprite rendering · Live PDX code preview · Localization preview · Button Effects editor · Theme system (dark/light/dark-blue) · First-run setup wizard · Windows auto-packager
+
+**License:** GPL-3.0 · This project is not affiliated with Paradox Interactive.
