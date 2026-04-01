@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QFont, QIcon, QColor
 
 from ..core.resource_manager import ResourceManager, SpriteInfo
+from ..core.theme_manager import ThemeManager
 
 PREVIEW_SIZE = 64
 
@@ -89,7 +90,7 @@ class SpriteLibrary(QWidget):
 
         self._info_label = QLabel()
         self._info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._info_label.setStyleSheet('color: #aaa; font-size: 9px;')
+        self._info_label.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         self._info_label.setWordWrap(True)
         preview_layout.addWidget(self._info_label)
 
@@ -102,7 +103,7 @@ class SpriteLibrary(QWidget):
 
         self._stats = QLabel('未加载精灵图')
         self._stats.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._stats.setStyleSheet('color: #666; font-size: 9px;')
+        self._stats.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(self._stats)
 
     def populate(self):
@@ -113,7 +114,7 @@ class SpriteLibrary(QWidget):
         for info in sorted(sprites, key=lambda s: s.name):
             item = SpriteListItem(info)
             if info.is_scalable():
-                item.setForeground(QColor('#7ec8e3'))
+                item.setForeground(QColor(ThemeManager.accent_color()))
             self._list.addItem(item)
             self._all_items.append(item)
         self._stats.setText(f'共 {len(sprites)} 个精灵图')
@@ -154,7 +155,7 @@ class SpriteLibrary(QWidget):
             self._preview_label.setStyleSheet('background: #2a2a2a; border: 1px solid #444;')
         else:
             self._preview_label.setText('无法加载')
-            self._preview_label.setStyleSheet('color: #666; background: #2a2a2a; border: 1px solid #444;')
+            self._preview_label.setStyleSheet(f'color: {ThemeManager.muted_color()}; background: #2a2a2a; border: 1px solid #444;')
 
         nw, nh = rm.get_sprite_natural_size(info.name)
         type_str = '可拉伸 (corneredTile)' if info.is_scalable() else f'固定尺寸 {nw}×{nh}'

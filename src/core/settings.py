@@ -42,6 +42,13 @@ _DEFAULTS = {
     'code_font': 'Consolas',
     'code_font_size': 10,
 
+    # 智能吸附
+    'smart_snap_enabled': True,
+    'smart_snap_threshold': 5,     # 像素阈值 (1-20)
+    'snap_to_edges': True,
+    'snap_to_centers': True,
+    'snap_to_spacing': True,
+
     # 高级
     'log_level': 'INFO',
     'first_run': True,         # 控制是否显示首次启动向导
@@ -301,6 +308,55 @@ class AppSettings:
     @code_font_size.setter
     def code_font_size(self, v: int):
         self._data['code_font_size'] = v
+        self.save()
+
+    # ------------------------------------------------------------------
+    # 智能吸附
+    # ------------------------------------------------------------------
+
+    @property
+    def smart_snap_enabled(self) -> bool:
+        return bool(self._data.get('smart_snap_enabled', True))
+
+    @smart_snap_enabled.setter
+    def smart_snap_enabled(self, v: bool):
+        self._data['smart_snap_enabled'] = v
+        self.save()
+
+    @property
+    def smart_snap_threshold(self) -> int:
+        return int(self._data.get('smart_snap_threshold', 5))
+
+    @smart_snap_threshold.setter
+    def smart_snap_threshold(self, v: int):
+        self._data['smart_snap_threshold'] = max(1, min(20, int(v)))
+        self.save()
+
+    @property
+    def snap_to_edges(self) -> bool:
+        return bool(self._data.get('snap_to_edges', True))
+
+    @snap_to_edges.setter
+    def snap_to_edges(self, v: bool):
+        self._data['snap_to_edges'] = v
+        self.save()
+
+    @property
+    def snap_to_centers(self) -> bool:
+        return bool(self._data.get('snap_to_centers', True))
+
+    @snap_to_centers.setter
+    def snap_to_centers(self, v: bool):
+        self._data['snap_to_centers'] = v
+        self.save()
+
+    @property
+    def snap_to_spacing(self) -> bool:
+        return bool(self._data.get('snap_to_spacing', True))
+
+    @snap_to_spacing.setter
+    def snap_to_spacing(self, v: bool):
+        self._data['snap_to_spacing'] = v
         self.save()
 
     # ------------------------------------------------------------------

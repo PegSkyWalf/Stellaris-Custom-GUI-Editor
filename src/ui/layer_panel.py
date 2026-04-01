@@ -7,12 +7,14 @@ from typing import Optional, Dict, List
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTreeWidget, QTreeWidgetItem, QPushButton,
-    QMenu, QAbstractItemView,
+    QMenu, QAbstractItemView, QApplication,
 )
 from PySide6.QtCore import Qt, Signal, QSize, QMimeData
-from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPen, QDropEvent
+from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPen, QDropEvent, QPalette
 
 from ..core.gui_model import WidgetNode, GUIDocument, WIDGET_COLORS, WIDGET_LABELS
+from ..core.theme_manager import ThemeManager
+from .icon_provider import IconProvider
 
 
 def _make_dot_icon(color: str, size: int = 14) -> QIcon:
@@ -40,24 +42,31 @@ class LayerItem(QTreeWidgetItem):
         is_protected = getattr(self.node, '_protected', False)
         name = self.node.name or self.node.widget_type
         type_short = self.node.widget_type.replace('Type', '').replace('type', '')
-        display_name = f'🔒 {name}' if is_protected else name
+        display_name = name
         self.setText(0, display_name)
         self.setText(1, type_short)
-        # Use checkbox-style display for visibility and lock
-        self.setText(2, '☑' if self._is_visible else '☐')
-        self.setText(3, '🔒' if self._is_locked else '🔓')
+        # Use SVG icons for visibility and lock columns
+        self.setText(2, '')
+        self.setText(3, '')
+        vis_icon_name = 'checkbox-on' if self._is_visible else 'checkbox-off'
+        lock_icon_name = 'lock' if self._is_locked else 'unlock'
+        self.setIcon(2, IconProvider.muted_icon(vis_icon_name, size=14))
+        self.setIcon(3, IconProvider.muted_icon(lock_icon_name, size=14))
 
-        color = '#c0392b' if is_protected else WIDGET_COLORS.get(self.node.widget_type, '#888')
-        self.setIcon(0, _make_dot_icon(color))
+        if is_protected:
+            self.setIcon(0, IconProvider.icon('lock', size=14, color='#c0392b'))
+        else:
+            color = WIDGET_COLORS.get(self.node.widget_type, '#888')
+            self.setIcon(0, _make_dot_icon(color))
 
         if is_protected:
             self.setForeground(0, QColor('#e67e22'))
         elif not self._is_visible:
-            self.setForeground(0, QColor('#666'))
+            self.setForeground(0, QApplication.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text))
         elif self._is_locked:
-            self.setForeground(0, QColor('#aaa'))
+            self.setForeground(0, QColor(ThemeManager.muted_color()))
         else:
-            self.setForeground(0, QColor('#ddd'))
+            self.setForeground(0, QApplication.palette().color(QPalette.ColorRole.Text))
 
     @property
     def is_visible(self):
@@ -114,13 +123,15 @@ class LayerPanel(QWidget):
 
         # Tool row
         btn_row = QHBoxLayout()
-        self._up_btn = QPushButton('↑')
+        self._up_btn = QPushButton()
+        self._up_btn.setIcon(IconProvider.themed_icon('arrow-up', size=16))
         self._up_btn.setFixedWidth(28)
         self._up_btn.setToolTip('上移 (在父容器中向前)')
         self._up_btn.clicked.connect(lambda: self._move_selection(-1))
         btn_row.addWidget(self._up_btn)
 
-        self._down_btn = QPushButton('↓')
+        self._down_btn = QPushButton()
+        self._down_btn.setIcon(IconProvider.themed_icon('arrow-down', size=16))
         self._down_btn.setFixedWidth(28)
         self._down_btn.setToolTip('下移 (在父容器中向后)')
         self._down_btn.clicked.connect(lambda: self._move_selection(1))
@@ -128,13 +139,15 @@ class LayerPanel(QWidget):
 
         btn_row.addStretch()
 
-        self._vis_btn = QPushButton('👁')
+        self._vis_btn = QPushButton()
+        self._vis_btn.setIcon(IconProvider.themed_icon('eye', size=16))
         self._vis_btn.setFixedWidth(28)
         self._vis_btn.setToolTip('切换可见性')
         self._vis_btn.clicked.connect(self._toggle_visibility)
         btn_row.addWidget(self._vis_btn)
 
-        self._lock_btn = QPushButton('🔒')
+        self._lock_btn = QPushButton()
+        self._lock_btn.setIcon(IconProvider.themed_icon('lock', size=16))
         self._lock_btn.setFixedWidth(28)
         self._lock_btn.setToolTip('切换锁定')
         self._lock_btn.clicked.connect(self._toggle_lock)
@@ -198,6 +211,16 @@ class LayerPanel(QWidget):
         finally:
             self._tree.blockSignals(False)
             self._updating = False
+
+    def refresh_icons(self):
+        """主题切换后刷新所有按钮图标。"""
+        self._up_btn.setIcon(IconProvider.themed_icon('arrow-up', size=16))
+        self._down_btn.setIcon(IconProvider.themed_icon('arrow-down', size=16))
+        self._vis_btn.setIcon(IconProvider.themed_icon('eye', size=16))
+        self._lock_btn.setIcon(IconProvider.themed_icon('lock', size=16))
+        # 刷新树中已显示的控件图标
+        for item in self._node_to_item.values():
+            item._update_display()
 
     def refresh_item(self, node: WidgetNode):
         """Refresh display of a single item (e.g., after name change)."""

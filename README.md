@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/UI-PySide6-informational.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.1.0-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.0-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
 
 ---
 
@@ -20,16 +20,20 @@
 | **可视化画布** | 1920×1080 参考画布，拖拽控件、缩放、平移，精确还原游戏坐标系 |
 | **精灵图渲染** | 实时加载 DDS/BC7/TGA/PNG 贴图，支持 9 块拉伸（corneredTileSpriteType）和固定尺寸精灵 |
 | **Orientation + Origo** | 完整实现群星双锚点定位系统，渲染位置与游戏内完全一致 |
+| **智能吸附对齐** | 拖拽时显示实时辅助线，自动对齐边缘/中轴；支持边距、阈值自定义 |
+| **阵列与镜像** | 线性阵列、圆形阵列（圆心/环上双模式+实时预览）、镜像（垂直/水平轴），所有副本自动唯一命名 |
+| **对齐工具** | 多控件对齐（左/右/顶/底/居中）、均匀分布、相同尺寸，均支持撤销 |
 | **代码视图** | 实时 PDX 脚本语法高亮；直接编辑代码，画布同步更新；**按控件结构路径精准高亮**，同名控件不再混淆 |
 | **属性面板** | 编辑全部属性；内置**原始属性编辑器**，未知属性不丢失 |
 | **图层面板** | 树形展示控件层次；点击即选中；可见性独立控制 |
-| **虚拟编组** | 独立于 `.gui` 文件结构的编组管理，按功能区域组织控件；与图层可见性完全解耦 |
+| **虚拟编组** | 独立于 `.gui` 文件结构的编组管理；从画布选中控件一键建组；与图层可见性完全解耦 |
+| **重复名称警告** | IDE 风格面板，实时扫描并列出所有重复控件名，点击即定位到对应控件 |
 | **精灵图库** | 浏览 7900+ 原版精灵图；名称搜索；点击预览；直接应用到选中控件 |
 | **本地化预览** | 解析 `.yml` 文件，在属性面板内直接显示翻译文本 |
 | **事件关联面板** | 自动扫描事件文件中的 `custom_gui` 引用，显示调用来源 |
 | **Button Effects 编辑器** | 可视化编辑 `common/button_effects/*.txt` |
 | **GFX 生成器** | 快速生成 `.gfx` 精灵注册代码块 |
-| **主题系统** | 深色 / 浅色 / 深海蓝，支持自定义强调色；全界面主题感知 |
+| **主题系统** | 深色 / 浅色 / 深海蓝，支持自定义强调色；全界面主题感知（含图标实时刷新） |
 | **撤销/重做** | 命令模式实现，最多 100 步，含复合操作 |
 | **异步资源加载** | 后台线程扫描游戏资源，启动时不卡顿，进度条实时提示 |
 | **首次向导** | 引导新用户完成游戏目录配置与主题选择 |
@@ -47,6 +51,8 @@
 3. 双击 `StellarisGUIEditor.exe`
 
 > ⚠️ EXE 旁边的 `_internal\` 目录是必须的，请整体保留，不要只复制 `.exe` 单独运行。
+
+> 🔒 **强烈建议在使用前备份所有原始 `.gui` 资源文件。** 本工具会直接修改文件，建议在独立的测试 Mod 副本中操作，切勿在未备份的游戏原版文件或已发布 Mod 文件上直接使用。
 
 ### 方式二：从源码运行（开发者）
 
@@ -131,17 +137,19 @@ Stellaris-Custom-GUI-Editor/
     │   ├── gui_model.py             # WidgetNode 数据模型 + 布局计算引擎
     │   ├── resource_manager.py      # 游戏/Mod 资源管理（精灵、本地化、事件）
     │   ├── settings.py              # 设置持久化（JSON）+ Steam 路径检测
-    │   ├── theme_manager.py         # 主题定义与 QSS 生成
+    │   ├── theme_manager.py         # 主题定义与 QSS 生成，含静态颜色辅助方法
     │   ├── undo.py                  # 命令模式撤销/重做栈
     │   ├── event_parser.py          # 事件脚本解析（custom_gui 关联）
-    │   └── virtual_groups.py        # 虚拟编组数据与持久化
+    │   ├── virtual_groups.py        # 虚拟编组数据与持久化
+    │   ├── snap_engine.py           # 吸附对齐引擎（边缘/中轴距离计算）
+    │   └── array_mirror.py          # 阵列与镜像坐标计算（线性/圆形/镜像）
     ├── ui/                          # 界面层（PySide6）
     │   ├── main_window.py           # 主窗口（菜单、面板、事件协调）
     │   ├── canvas.py                # 可视化画布（QGraphicsView/Scene）
     │   ├── widget_items.py          # 画布控件图形元素（QGraphicsItem）
     │   ├── properties_panel.py      # 属性编辑面板
     │   ├── welcome_dialog.py        # 首次启动配置向导
-    │   ├── dialogs.py               # 设置、精灵选择等对话框
+    │   ├── dialogs.py               # 设置、精灵选择、关于等对话框
     │   ├── widget_library.py        # 控件类型库 + 预设库
     │   ├── sprite_library.py        # 精灵图浏览面板
     │   ├── layer_panel.py           # 图层面板（控件树）
@@ -149,7 +157,11 @@ Stellaris-Custom-GUI-Editor/
     │   ├── button_effects_editor.py # Button Effects 编辑器
     │   ├── code_view.py             # 代码视图（语法高亮 + 路径定位）
     │   ├── file_browser.py          # .gui/.gfx 文件树浏览
-    │   └── virtual_groups_panel.py  # 虚拟编组管理面板
+    │   ├── virtual_groups_panel.py  # 虚拟编组管理面板
+    │   ├── icon_provider.py         # SVG 图标系统（路径填充，主题染色）
+    │   ├── snap_guide_overlay.py    # 吸附辅助线覆盖层（透明 QWidget）
+    │   ├── array_dialogs.py         # 阵列/镜像参数对话框（含实时预览）
+    │   └── name_warnings_panel.py   # 重复名称警告面板（IDE 风格，可点击定位）
     └── codegen/
         └── gui_writer.py            # GUIDocument → PDX Script 序列化器
 ```
@@ -204,21 +216,27 @@ A：日志文件位于 `C:\Users\用户名\.stellaris_gui_editor\logs\`，提交
 A **visual custom GUI editor** for *Stellaris* mod creators. Drag-and-drop widgets on a 1920×1080 canvas, preview DDS sprites in real-time, and auto-generate `.gui` script files — no manual scripting needed.
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.1.0-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.0-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
+
+> 🔒 **Always back up your `.gui` files before editing.** This tool modifies files directly. Work on a copy of your mod, never on unbackedup originals.
 
 ### Key Features
 
 - **Visual canvas** — 1920×1080 reference canvas, drag/resize/move widgets, fully accurate `orientation` + `origo` coordinate system
 - **Sprite rendering** — DDS/BC7/TGA/PNG textures, including 9-slice (corneredTileSpriteType) and fixed-size sprites
+- **Smart snap guides** — Real-time alignment lines while dragging; edge/center-axis snapping with configurable threshold
+- **Array & Mirror** — Linear array, Circular array (center or on-ring mode with live preview), Mirror (vertical/horizontal); auto-unique names on all copies
+- **Alignment tools** — Align edges, distribute evenly, match sizes; all undoable
 - **Live code view** — PDX Script syntax highlighting; edit code directly and see canvas update; **structure-path-based highlighting** to disambiguate same-name widgets
 - **Properties panel** — Edit all widget properties; raw key-value editor preserves unknown properties
 - **Layer panel** — Tree view of widget hierarchy; click to select; independent visibility toggles
-- **Virtual groups** — Organize widgets into logical groups independent of `.gui` file structure; visibility fully decoupled from layer panel
+- **Virtual groups** — Organize widgets into logical groups independent of `.gui` file structure; create groups from selection; visibility fully decoupled from layer panel
+- **Duplicate name warnings** — IDE-style panel listing all duplicate widget names; click to navigate
 - **Sprite library** — Browse 7900+ vanilla sprites with search and preview
 - **Localization preview** — Parse `.yml` files and display translated text inline
 - **Event linking** — Scan event files for `custom_gui` references automatically
 - **Button Effects editor** — Visual editor for `common/button_effects/*.txt`
-- **Theme system** — Dark / Light / Dark Blue with custom accent color
+- **Theme system** — Dark / Light / Dark Blue with custom accent color; icons refresh on theme switch
 - **Undo/Redo** — Command-pattern stack, up to 100 steps
 - **Async resource loading** — Background thread; no UI freeze on startup
 - **Steam auto-detect** — Reads Windows registry to find game install path

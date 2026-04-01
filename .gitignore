@@ -72,5 +72,13 @@ docs/OWNER_GUIDE.md
 # ── 软件著作权申请材料（作者私有，严禁上传）─────────────────────
 docs/copyright/
 
+# ── AI Agent 聊天记录（本地资料，不上传）──────────────────────────
+docs/user_resource/
+
+# ── Claude Code 配置文件（本地，不上传）──────────────────────────
+CLAUDE.md
+.claude/
+2026-*-this-session-*.txt
+
 # ── 构建产物 ZIP（本地生成，不上传）──────────────────────────────
 *.zip

@@ -27,6 +27,7 @@ from ..core.gui_model import (
     reverse_compute_position, orientation_to_anchor, origo_to_offset,
     effective_origo,
 )
+from .icon_provider import IconProvider
 from ..core.resource_manager import ResourceManager
 
 if TYPE_CHECKING:
@@ -889,10 +890,8 @@ class GUIWidgetItem(QGraphicsRectItem):
 
         # Lock indicator
         if self._locked:
-            painter.setPen(QPen(QColor('#888'), 1))
-            painter.setFont(QFont('Arial', 8))
-            painter.drawText(rect.adjusted(2, 2, -2, -2),
-                             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight, '🔒')
+            lock_pm = IconProvider.pixmap('lock', 12)  # 使用主题前景色
+            painter.drawPixmap(int(rect.right()) - 14, int(rect.top()) + 2, lock_pm)
 
         # Label
         self._draw_label(painter, rect)
@@ -1046,7 +1045,7 @@ class GUIWidgetItem(QGraphicsRectItem):
         else:
             header_label = node.widget_type.replace('Type', '')
         if getattr(node, '_protected', False):
-            header_label = f'🔒 {header_label}'
+            header_label = f'[L] {header_label}'
 
         font_small = QFont('Microsoft YaHei', 7)
         painter.setFont(font_small)
@@ -1152,8 +1151,16 @@ class GUIWidgetItem(QGraphicsRectItem):
                 return
         self._resize_handle = -1
         self.hasMoved = False
+        self._constrained_axis = None  # Shift 约束拖拽方向
+        self._drag_origin = self.pos()  # 拖拽起始位置
         # Record position before move for undo
         self._old_pos = self.node.position
+        # 重建吸附索引
+        scene = self.scene()
+        if scene and hasattr(scene, 'rebuild_snap_index'):
+            selected = [i for i in scene.selectedItems()
+                        if isinstance(i, GUIWidgetItem)]
+            scene.rebuild_snap_index(selected)
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -1162,6 +1169,19 @@ class GUIWidgetItem(QGraphicsRectItem):
             event.accept()
             return
         super().mouseMoveEvent(event)
+        # Shift 约束拖拽方向
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier and self._drag_origin:
+            pos = self.pos()
+            dx = abs(pos.x() - self._drag_origin.x())
+            dy = abs(pos.y() - self._drag_origin.y())
+            if self._constrained_axis is None and (dx > 3 or dy > 3):
+                self._constrained_axis = 'h' if dx >= dy else 'v'
+            if self._constrained_axis == 'h':
+                self.setPos(pos.x(), self._drag_origin.y())
+            elif self._constrained_axis == 'v':
+                self.setPos(self._drag_origin.x(), pos.y())
+        else:
+            self._constrained_axis = None
 
     def mouseReleaseEvent(self, event):
         if self._resize_handle >= 0:
@@ -1176,11 +1196,29 @@ class GUIWidgetItem(QGraphicsRectItem):
             self._commit_to_node(push_undo=True)
         self.hasMoved = False
         self._old_pos = None
+        self._constrained_axis = None
+        self._drag_origin = None
+        # 清除吸附参考线
+        scene = self.scene()
+        if scene and hasattr(scene, 'clear_snap_guides'):
+            scene.clear_snap_guides()
+
+    _in_snap_adjust = False  # 防止吸附修正触发递归
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
             self.hasMoved = True
             scene = self.scene()
+            # 智能吸附（仅在非递归时执行）
+            if not GUIWidgetItem._in_snap_adjust and scene and hasattr(scene, 'query_snap'):
+                result = scene.query_snap(self)
+                if result and (result.snapped_x or result.snapped_y):
+                    GUIWidgetItem._in_snap_adjust = True
+                    try:
+                        self.setPos(self.pos().x() + result.dx,
+                                    self.pos().y() + result.dy)
+                    finally:
+                        GUIWidgetItem._in_snap_adjust = False
             if scene and hasattr(scene, 'on_widget_moved'):
                 scene.on_widget_moved(self)
         return super().itemChange(change, value)

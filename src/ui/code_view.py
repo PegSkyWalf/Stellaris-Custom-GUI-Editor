@@ -17,8 +17,8 @@ from PySide6.QtGui import (
 )
 
 from ..core.gui_model import GUIDocument, WidgetNode
-from ..codegen.gui_writer import write_document
-from ..core.theme_manager import is_dark_theme
+from ..codegen.gui_writer import write_document, write_document_preserving
+from ..core.theme_manager import is_dark_theme, ThemeManager
 from ..core.settings import AppSettings
 
 # Dark theme token colors (VS Code Dark+)
@@ -237,7 +237,7 @@ class CodeView(QWidget):
 
         # Status
         self._status_label = QLabel('')
-        self._status_label.setStyleSheet('color: #888; font-size: 9px;')
+        self._status_label.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(self._status_label)
 
     def update_theme(self, theme_name: str) -> None:
@@ -252,7 +252,7 @@ class CodeView(QWidget):
             self._highlight_format.setBackground(QColor('#add8e6'))
         # Status label text color
         self._status_label.setStyleSheet(
-            'color: #555; font-size: 9px;' if not dark else 'color: #888; font-size: 9px;'
+            f'color: {ThemeManager.muted_color()}; font-size: 9px;'
         )
 
     def _on_auto_apply_toggled(self, state):
@@ -298,7 +298,7 @@ class CodeView(QWidget):
         if self._doc is None:
             return
         try:
-            code = write_document(self._doc)
+            code = write_document_preserving(self._doc)
             line_count = code.count('\n') + 1
 
             # Detect large file: disable highlighter and auto-apply (code→canvas)
@@ -313,7 +313,7 @@ class CodeView(QWidget):
                     self._highlighter.setDocument(None)
                     self._highlighter = None
                 self._large_file_bar.setText(
-                    f'⚠ 大文件模式 ({line_count} 行) — 已禁用自动应用和语法高亮以保持流畅。'
+                    f'[!] 大文件模式 ({line_count} 行) — 已禁用自动应用和语法高亮以保持流畅。'
                     '  代码视图仍会跟随画布更新。'
                 )
                 self._large_file_bar.show()

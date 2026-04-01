@@ -31,9 +31,11 @@ class MoveWidgetCommand(Command):
 
     def execute(self):
         self.node.position = self.new_pos
+        self.node._source_modified = True
 
     def undo(self):
         self.node.position = self.old_pos
+        self.node._source_modified = True
 
 
 class ResizeWidgetCommand(Command):
@@ -45,9 +47,11 @@ class ResizeWidgetCommand(Command):
 
     def execute(self):
         self.node.size = self.new_size
+        self.node._source_modified = True
 
     def undo(self):
         self.node.size = self.old_size
+        self.node._source_modified = True
 
 
 class SetPropertyCommand(Command):
@@ -63,12 +67,14 @@ class SetPropertyCommand(Command):
             self.node.properties.pop(self.key, None)
         else:
             self.node.properties[self.key] = self.new_val
+        self.node._source_modified = True
 
     def undo(self):
         if self.old_val is None:
             self.node.properties.pop(self.key, None)
         else:
             self.node.properties[self.key] = self.old_val
+        self.node._source_modified = True
 
 
 class AddWidgetCommand(Command):
@@ -86,7 +92,9 @@ class AddWidgetCommand(Command):
         self.insert_index = insert_index
 
     def execute(self):
+        self.node._source_modified = True
         if self.parent:
+            self.parent._source_modified = True
             if self.insert_index >= 0:
                 self.parent.insert_child(self.insert_index, self.node)
             else:
@@ -99,6 +107,7 @@ class AddWidgetCommand(Command):
 
     def undo(self):
         if self.parent:
+            self.parent._source_modified = True
             self.parent.remove_child(self.node)
         elif self.node in self.doc.roots:
             self.doc.roots.remove(self.node)
@@ -115,6 +124,7 @@ class DeleteWidgetCommand(Command):
 
     def execute(self):
         if self.parent:
+            self.parent._source_modified = True
             try:
                 self.index = self.parent.children.index(self.node)
             except ValueError:
@@ -129,6 +139,7 @@ class DeleteWidgetCommand(Command):
 
     def undo(self):
         if self.parent:
+            self.parent._source_modified = True
             if self.index >= 0:
                 self.parent.insert_child(self.index, self.node)
             else:
@@ -148,10 +159,16 @@ class DuplicateWidgetCommand(Command):
         self.clone: Optional['WidgetNode'] = None
 
     def execute(self):
+        from .gui_model import make_names_unique
         self.clone = self.original.clone()
+        # 自动生成唯一名称
+        existing = {w.name for w in self.doc.all_widgets() if w.name}
+        make_names_unique(self.clone, existing)
+        self.clone._source_modified = True
         x, y = self.clone.position
         self.clone.position = (x + 16, y + 16)
         if self.original.parent:
+            self.original.parent._source_modified = True
             self.original.parent.add_child(self.clone)
         else:
             self.doc.roots.append(self.clone)
@@ -159,6 +176,7 @@ class DuplicateWidgetCommand(Command):
     def undo(self):
         if self.clone:
             if self.clone.parent:
+                self.clone.parent._source_modified = True
                 self.clone.parent.remove_child(self.clone)
             elif self.clone in self.doc.roots:
                 self.doc.roots.remove(self.clone)

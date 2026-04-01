@@ -11,7 +11,44 @@ Supports:
 - position/size shorthand: { x = N y = M } or { N M }
 """
 import re
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+
+# ---------------------------------------------------------------------------
+# Source span tracking for roundtrip preservation
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SourceSpan:
+    """Character offset range [start, end) in original source text."""
+    start: int
+    end: int
+
+
+@dataclass
+class WidgetSpanInfo:
+    """Source span info for a parsed widget block.
+
+    Tracks the full span (including 'widgetType = { ... }') and inner span
+    (between { and }). Children spans are tracked recursively.
+    """
+    widget_type: str
+    name: str  # widget name if found, else ''
+    full_span: SourceSpan  # 从 widget_type 关键字到闭合 } (inclusive)
+    children: List['WidgetSpanInfo'] = field(default_factory=list)
+
+
+@dataclass
+class ParseResultWithSpans:
+    """Parser result that includes source span mapping for roundtrip support."""
+    pairs: List[Tuple[str, Any]]
+    raw_source: str
+    widget_spans: List[WidgetSpanInfo]  # 顶层 widget 的 span 信息
+    # guiTypes 块的 span 信息（如有）
+    guitypes_span: Optional[SourceSpan] = None
+    # guiTypes 块内部（{ 之后到 } 之前）的 span
+    guitypes_inner_span: Optional[SourceSpan] = None
 
 
 # ---------------------------------------------------------------------------
@@ -39,26 +76,30 @@ _TOKEN_RE = re.compile(
 
 
 class Token:
-    __slots__ = ('type', 'value', 'line')
+    __slots__ = ('type', 'value', 'line', 'offset')
 
-    def __init__(self, type_: str, value: str, line: int):
+    def __init__(self, type_: str, value: str, line: int, offset: int = -1):
         self.type = type_
         self.value = value
         self.line = line
+        self.offset = offset  # 字符偏移量（在原始文本中的位置）
 
     def __repr__(self):
-        return f'Token({self.type}, {self.value!r}, line={self.line})'
+        return f'Token({self.type}, {self.value!r}, line={self.line}, off={self.offset})'
 
 
 def tokenize(text: str) -> List[Token]:
     tokens: List[Token] = []
     line = 1
+    bom_offset = 0
     # Strip UTF-8 BOM if present
     if text.startswith('\ufeff'):
         text = text[1:]
+        bom_offset = 1
     for mo in _TOKEN_RE.finditer(text):
         kind = mo.lastgroup
         value = mo.group()
+        offset = mo.start() + bom_offset
         if kind == 'NEWLINE':
             line += 1
         elif kind in ('SKIP', 'COMMENT'):
@@ -67,8 +108,8 @@ def tokenize(text: str) -> List[Token]:
         elif kind == 'MISMATCH':
             pass  # Ignore unexpected chars
         else:
-            tokens.append(Token(kind, value, line))
-    tokens.append(Token('EOF', '', line))
+            tokens.append(Token(kind, value, line, offset))
+    tokens.append(Token('EOF', '', line, len(text) + bom_offset))
     return tokens
 
 
@@ -98,6 +139,7 @@ class PDXParser:
         self.tokens = tokenize(text)
         self.pos = 0
         self.variables: Dict[str, Any] = {}
+        self._source_text = text
 
     def peek(self) -> Token:
         return self.tokens[self.pos]
@@ -118,6 +160,120 @@ class PDXParser:
             pairs = self._parse_pairs()
             result.extend(pairs)
         return result
+
+    def parse_with_spans(self) -> ParseResultWithSpans:
+        """Parse the file and return results with source span info for roundtrip."""
+        result = []
+        widget_spans: List[WidgetSpanInfo] = []
+        guitypes_span: Optional[SourceSpan] = None
+        guitypes_inner_span: Optional[SourceSpan] = None
+
+        while self.peek().type != 'EOF':
+            tok = self.peek()
+            # 检测 guiTypes = { ... } 块
+            if tok.type == 'IDENT' and tok.value.lower() == 'guitypes':
+                gt_start = tok.offset
+                key_tok = self.consume('IDENT')
+                if self.peek().type == 'EQUALS':
+                    self.consume('EQUALS')
+                    if self.peek().type == 'LBRACE':
+                        lbrace = self.consume('LBRACE')
+                        inner_start = lbrace.offset + 1
+                        # 解析 guiTypes 块内容，同时追踪每个 widget 的 span
+                        pairs_in_gt = []
+                        while self.peek().type not in ('RBRACE', 'EOF'):
+                            child_spans = self._parse_pairs_with_spans(pairs_in_gt)
+                            widget_spans.extend(child_spans)
+                        rbrace_tok = self.peek()
+                        inner_end = rbrace_tok.offset
+                        if rbrace_tok.type == 'RBRACE':
+                            self.consume('RBRACE')
+                            guitypes_span = SourceSpan(gt_start, rbrace_tok.offset + 1)
+                            guitypes_inner_span = SourceSpan(inner_start, inner_end)
+                        result.append((key_tok.value, pairs_in_gt))
+                    else:
+                        val = self._parse_value()
+                        result.append((key_tok.value, val))
+                else:
+                    result.append(('_value', key_tok.value))
+            else:
+                pairs = self._parse_pairs()
+                result.extend(pairs)
+
+        return ParseResultWithSpans(
+            pairs=result,
+            raw_source=self._source_text,
+            widget_spans=widget_spans,
+            guitypes_span=guitypes_span,
+            guitypes_inner_span=guitypes_inner_span,
+        )
+
+    def _parse_pairs_with_spans(self, out_pairs: list) -> List[WidgetSpanInfo]:
+        """Parse pairs within guiTypes block, tracking widget source spans."""
+        spans: List[WidgetSpanInfo] = []
+        tok = self.peek()
+        if tok.type == 'EOF' or tok.type == 'RBRACE':
+            return spans
+
+        if tok.type == 'IDENT' and tok.value.startswith('@'):
+            # Variable definition: @VAR = value
+            key_tok = self.consume('IDENT')
+            if self.peek().type == 'EQUALS':
+                self.consume('EQUALS')
+                val = self._parse_value()
+                self.variables[key_tok.value] = val
+                return spans
+            else:
+                return spans
+
+        if tok.type in ('IDENT', 'STRING', 'NUMBER'):
+            key_start_offset = tok.offset
+            key = self._parse_scalar()
+            if isinstance(key, str) and self.peek().type == 'EQUALS':
+                self.consume('EQUALS')
+                if self.peek().type == 'LBRACE':
+                    # 可能是 widget 块
+                    block_val, child_spans = self._parse_block_with_spans()
+                    out_pairs.append((str(key), block_val))
+                    # 确定闭合 } 的位置 — 上一个已消费的 token
+                    end_offset = self.tokens[self.pos - 1].offset + 1
+                    # 提取 widget name
+                    wname = ''
+                    for k, v in block_val:
+                        if k == 'name' and isinstance(v, str):
+                            wname = v
+                            break
+                    span_info = WidgetSpanInfo(
+                        widget_type=str(key),
+                        name=wname,
+                        full_span=SourceSpan(key_start_offset, end_offset),
+                        children=child_spans,
+                    )
+                    spans.append(span_info)
+                else:
+                    val = self._parse_value()
+                    out_pairs.append((str(key), val))
+            else:
+                out_pairs.append(('_value', key))
+        elif tok.type == 'LBRACE':
+            val = self._parse_block()
+            out_pairs.append(('_block', val))
+        else:
+            self.consume()
+
+        return spans
+
+    def _parse_block_with_spans(self) -> Tuple[List[Tuple[str, Any]], List[WidgetSpanInfo]]:
+        """Parse a { ... } block, returning both pairs and child widget spans."""
+        self.consume('LBRACE')
+        pairs: List[Tuple[str, Any]] = []
+        child_spans: List[WidgetSpanInfo] = []
+        while self.peek().type not in ('RBRACE', 'EOF'):
+            new_spans = self._parse_pairs_with_spans(pairs)
+            child_spans.extend(new_spans)
+        if self.peek().type == 'RBRACE':
+            self.consume('RBRACE')
+        return pairs, child_spans
 
     def _parse_pairs(self) -> List[Tuple[str, Any]]:
         """Parse key=value pairs until end of current block or EOF."""
@@ -356,6 +512,50 @@ def _try_partial_parse(text: str, results: list):
                 key_start = i + 1
                 block_start = -1
         i += 1
+
+
+def parse_file_with_spans(path: str, encoding: str = '') -> ParseResultWithSpans:
+    """Parse a PDX script file, return results with source span info for roundtrip.
+
+    Tries multiple encodings (UTF-8 BOM, UTF-8, CP-1252, Latin-1).
+    """
+    text = None
+    detected_encoding = 'utf-8'
+    encodings = [encoding] if encoding else _ENCODINGS_TO_TRY
+    last_err = None
+    for enc in encodings:
+        try:
+            with open(path, 'r', encoding=enc, errors='strict') as f:
+                text = f.read()
+            detected_encoding = enc
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+        except Exception as e:
+            last_err = e
+            break
+    if text is None:
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                text = f.read()
+            detected_encoding = 'utf-8'
+        except Exception as e:
+            raise ParseError(f'Cannot read file {path!r}: {last_err or e}')
+
+    try:
+        parser = PDXParser(text)
+        result = parser.parse_with_spans()
+        return result
+    except Exception:
+        # Fallback: 返回基础结果，不含 span 信息
+        pairs = _parse_text_with_recovery(text, path)
+        return ParseResultWithSpans(
+            pairs=pairs,
+            raw_source=text,
+            widget_spans=[],
+            guitypes_span=None,
+            guitypes_inner_span=None,
+        )
 
 
 def parse_file_as_dict(path: str) -> Dict[str, Any]:

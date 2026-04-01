@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QFileDialog,
     QDialogButtonBox, QWidget, QListWidget, QListWidgetItem,
     QTabWidget, QSpinBox, QCheckBox, QSplitter, QTextEdit,
-    QComboBox, QColorDialog, QApplication,
+    QComboBox, QColorDialog, QApplication, QGroupBox,
 )
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QFont, QPixmap, QIcon, QColor
@@ -74,7 +74,7 @@ class SettingsDialog(QDialog):
         form.addRow('游戏安装目录:', row)
 
         note = QLabel('群星的安装目录，例如：\n<Steam>/steamapps/common/Stellaris')
-        note.setStyleSheet('color:#888; font-size:9px;')
+        note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         form.addRow('', note)
 
         auto_btn = QPushButton('自动检测')
@@ -100,7 +100,7 @@ class SettingsDialog(QDialog):
         form.addRow(extra_btn_row)
 
         extra_note = QLabel('若本模组引用了其他模组的贴图/精灵图，\n请将那些模组的根目录添加到此列表。')
-        extra_note.setStyleSheet('color:#888; font-size:9px;')
+        extra_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         extra_note.setWordWrap(True)
         form.addRow('', extra_note)
         return tab
@@ -126,7 +126,7 @@ class SettingsDialog(QDialog):
         cform.addRow('画布高度:', self._canvas_h)
 
         res_note = QLabel('对应游戏运行分辨率，通常为 1920×1080')
-        res_note.setStyleSheet('color:#888; font-size:9px;')
+        res_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         cform.addRow('', res_note)
 
         self._grid_size = QSpinBox()
@@ -139,6 +139,32 @@ class SettingsDialog(QDialog):
 
         self._snap = QCheckBox('吸附到网格')
         cform.addRow('', self._snap)
+
+        # 智能吸附设置
+        snap_group = QGroupBox('智能吸附')
+        snap_form = QFormLayout(snap_group)
+        snap_form.setSpacing(8)
+
+        self._smart_snap = QCheckBox('启用智能吸附')
+        self._smart_snap.setToolTip('拖拽时自动对齐到其他控件的边缘/中心')
+        snap_form.addRow('', self._smart_snap)
+
+        self._snap_threshold = QSpinBox()
+        self._snap_threshold.setRange(1, 20)
+        self._snap_threshold.setSuffix(' px')
+        self._snap_threshold.setToolTip('吸附灵敏度（越大越容易触发）')
+        snap_form.addRow('吸附阈值:', self._snap_threshold)
+
+        self._snap_edges = QCheckBox('边缘对齐')
+        snap_form.addRow('', self._snap_edges)
+
+        self._snap_centers = QCheckBox('中心对齐')
+        snap_form.addRow('', self._snap_centers)
+
+        self._snap_spacing = QCheckBox('等间距检测')
+        snap_form.addRow('', self._snap_spacing)
+
+        cform.addRow(snap_group)
 
         return tab
 
@@ -159,7 +185,7 @@ class SettingsDialog(QDialog):
         form.addRow('界面主题:', self._theme_combo)
 
         theme_note = QLabel('更改主题后点击"确定"即时生效，无需重启。')
-        theme_note.setStyleSheet('color:#888; font-size:9px;')
+        theme_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         form.addRow('', theme_note)
 
         accent_row = QHBoxLayout()
@@ -214,7 +240,7 @@ class SettingsDialog(QDialog):
         form.addRow('代码字体大小:', self._code_font_size_spin)
 
         note = QLabel('代码字体修改在下次打开文件后生效。')
-        note.setStyleSheet('color:#888; font-size:9px;')
+        note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         form.addRow('', note)
         return tab
 
@@ -234,7 +260,7 @@ class SettingsDialog(QDialog):
         form.addRow('日志级别:', self._log_level_combo)
 
         log_note = QLabel('DEBUG 会记录大量信息，适合排查问题；正常使用建议 INFO。')
-        log_note.setStyleSheet('color:#888; font-size:9px;')
+        log_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         log_note.setWordWrap(True)
         form.addRow('', log_note)
 
@@ -242,7 +268,7 @@ class SettingsDialog(QDialog):
         open_log_btn.clicked.connect(self._open_log_dir)
         from ..core.logger import get_log_dir, _LOG_FILE
         log_path_lbl = QLabel(str(_LOG_FILE))
-        log_path_lbl.setStyleSheet('color:#888; font-size:8px;')
+        log_path_lbl.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:8px;')
         log_path_lbl.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         log_path_lbl.setWordWrap(True)
@@ -281,6 +307,13 @@ class SettingsDialog(QDialog):
         self._grid_size.setValue(self._settings.grid_size)
         self._show_grid.setChecked(self._settings.show_grid)
         self._snap.setChecked(self._settings.snap_to_grid)
+
+        # 智能吸附
+        self._smart_snap.setChecked(self._settings.smart_snap_enabled)
+        self._snap_threshold.setValue(self._settings.smart_snap_threshold)
+        self._snap_edges.setChecked(self._settings.snap_to_edges)
+        self._snap_centers.setChecked(self._settings.snap_to_centers)
+        self._snap_spacing.setChecked(self._settings.snap_to_spacing)
 
         # 外观
         theme = self._settings.theme
@@ -321,6 +354,13 @@ class SettingsDialog(QDialog):
         self._settings.grid_size = self._grid_size.value()
         self._settings.show_grid = self._show_grid.isChecked()
         self._settings.snap_to_grid = self._snap.isChecked()
+
+        # 智能吸附
+        self._settings.smart_snap_enabled = self._smart_snap.isChecked()
+        self._settings.smart_snap_threshold = self._snap_threshold.value()
+        self._settings.snap_to_edges = self._snap_edges.isChecked()
+        self._settings.snap_to_centers = self._snap_centers.isChecked()
+        self._settings.snap_to_spacing = self._snap_spacing.isChecked()
 
         # 外观
         new_theme = self._theme_combo.currentData()
@@ -448,7 +488,7 @@ class NewFileDialog(QDialog):
         self._key_edit = QLineEdit()
         self._key_edit.setPlaceholderText('my_mod_prefix_main_window')
         key_note = QLabel('GUI 键名 (name=)，在 custom_gui= 中引用此值触发界面')
-        key_note.setStyleSheet('color:#888; font-size:9px;')
+        key_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         form.addRow('GUI 键名:', self._key_edit)
         form.addRow('', key_note)
 
@@ -556,7 +596,7 @@ class SpritePicker(QDialog):
         rl.addWidget(self._preview)
         self._info = QLabel()
         self._info.setWordWrap(True)
-        self._info.setStyleSheet('color:#aaa; font-size:9px;')
+        self._info.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         rl.addWidget(self._info)
         rl.addStretch()
         splitter.addWidget(right)
@@ -578,7 +618,7 @@ class SpritePicker(QDialog):
             info = rm.get_sprite(name)
             item = QListWidgetItem(name)
             if info and info.is_scalable():
-                item.setForeground(QColor('#7ec8e3'))
+                item.setForeground(QColor(ThemeManager.accent_color()))
             self._list.addItem(item)
 
     def _filter(self, text: str):
@@ -736,48 +776,150 @@ class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         from ..core.__version__ import (
-            APP_NAME, VERSION, BUILD_DATE,
-            GITHUB_URL, LICENSE_NAME, DESCRIPTION_CN,
+            APP_NAME, APP_NAME_EN, VERSION, BUILD_DATE,
+            AUTHOR, AUTHOR_EMAIL,
+            GITHUB_URL, ISSUES_URL, RELEASES_URL,
+            LICENSE_NAME, LICENSE_URL,
+            DESCRIPTION_CN,
         )
+
         self.setWindowTitle(f'关于 {APP_NAME}')
-        self.setMinimumWidth(420)
-        layout = QVBoxLayout(self)
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(420)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        title = QLabel(APP_NAME)
-        title.setFont(QFont('Microsoft YaHei', 14, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-
-        version_lbl = QLabel(f'版本  {VERSION}  ·  {BUILD_DATE}')
-        version_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        version_lbl.setStyleSheet('color:#888; font-size:9px;')
-        layout.addWidget(version_lbl)
-
-        desc = QLabel(DESCRIPTION_CN)
-        desc.setWordWrap(True)
-        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(desc)
-
-        features = QLabel(
-            '\n功能:\n'
-            '  ✦ 拖拽式控件布局与精灵图渲染\n'
-            '  ✦ 正确实现 orientation + origo 定位系统\n'
-            '  ✦ spriteType 使用 scale，quadTextureSprite 使用 size\n'
-            '  ✦ 实时 .gui 代码生成（PDX 语法高亮）\n'
-            '  ✦ 本地化键解析与 tooltip 可视化\n'
-            '  ✦ 撤销/重做 · 自动保存 · 预设系统\n'
+        # ── 顶部横幅 ─────────────────────────────────────────────────────
+        banner = QWidget()
+        banner.setStyleSheet(
+            f'background:{ThemeManager.accent_color()};'
         )
-        features.setWordWrap(True)
-        layout.addWidget(features)
+        banner_layout = QVBoxLayout(banner)
+        banner_layout.setContentsMargins(24, 20, 24, 16)
+        banner_layout.setSpacing(4)
 
-        github_lbl = QLabel(f'<a href="{GITHUB_URL}">GitHub 主页</a>  ·  '
-                            f'许可证: {LICENSE_NAME}')
-        github_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        github_lbl.setOpenExternalLinks(True)
-        github_lbl.setStyleSheet('font-size:9px;')
-        layout.addWidget(github_lbl)
+        name_lbl = QLabel(APP_NAME)
+        name_lbl.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
+        name_lbl.setStyleSheet('color:#ffffff; background:transparent;')
+        banner_layout.addWidget(name_lbl)
 
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        btns.button(QDialogButtonBox.StandardButton.Ok).setText('关闭')
-        btns.accepted.connect(self.accept)
-        layout.addWidget(btns)
+        name_en_lbl = QLabel(APP_NAME_EN)
+        name_en_lbl.setFont(QFont('Segoe UI', 9))
+        name_en_lbl.setStyleSheet('color:rgba(255,255,255,180); background:transparent;')
+        banner_layout.addWidget(name_en_lbl)
+
+        ver_row = QHBoxLayout()
+        ver_badge = QLabel(f' v{VERSION} ')
+        ver_badge.setStyleSheet(
+            'color:#ffffff; background:rgba(0,0,0,40);'
+            'border-radius:3px; padding:1px 6px; font-size:10px; font-weight:bold;'
+        )
+        ver_row.addWidget(ver_badge)
+        date_lbl = QLabel(f'  构建日期 {BUILD_DATE}')
+        date_lbl.setStyleSheet('color:rgba(255,255,255,160); font-size:9px; background:transparent;')
+        ver_row.addWidget(date_lbl)
+        ver_row.addStretch()
+        banner_layout.addLayout(ver_row)
+
+        root.addWidget(banner)
+
+        # ── 正文区域 ─────────────────────────────────────────────────────
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(24, 16, 24, 12)
+        body_layout.setSpacing(12)
+
+        # 简介
+        desc_lbl = QLabel(DESCRIPTION_CN)
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet('font-size:10px; line-height:1.5;')
+        body_layout.addWidget(desc_lbl)
+
+        # 分隔线
+        sep = QWidget()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f'background:{ThemeManager.muted_color()}; opacity:0.3;')
+        body_layout.addWidget(sep)
+
+        # 功能列表（两列）
+        feat_title = QLabel('主要功能')
+        feat_title.setFont(QFont('Microsoft YaHei', 9, QFont.Weight.Bold))
+        body_layout.addWidget(feat_title)
+
+        feats = [
+            ('可视化编辑', '拖拽布局，实时精灵图渲染'),
+            ('坐标系统', 'orientation + origo 精准实现'),
+            ('精灵类型', 'spriteType/quadTextureSprite 完整支持'),
+            ('代码视图', '实时 PDX 语法代码生成与导出'),
+            ('本地化', '键解析与 tooltip 预览'),
+            ('源码保留', 'patch 式保存，不破坏原始注释'),
+            ('智能吸附', '边缘/中心/等距自动吸附对齐'),
+            ('阵列镜像', '线性/圆形阵列 + 镜像复制'),
+        ]
+        feat_grid = QWidget()
+        feat_grid_layout = QHBoxLayout(feat_grid)
+        feat_grid_layout.setContentsMargins(0, 0, 0, 0)
+        feat_grid_layout.setSpacing(12)
+        col1 = QVBoxLayout()
+        col2 = QVBoxLayout()
+        col1.setSpacing(3)
+        col2.setSpacing(3)
+        for i, (title, detail) in enumerate(feats):
+            lbl = QLabel(f'<b>{title}</b>  <span style="color:{ThemeManager.muted_color()}">{detail}</span>')
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet('font-size:9px;')
+            (col1 if i % 2 == 0 else col2).addWidget(lbl)
+        feat_grid_layout.addLayout(col1, 1)
+        feat_grid_layout.addLayout(col2, 1)
+        body_layout.addWidget(feat_grid)
+
+        # 另一条分隔线
+        sep2 = QWidget()
+        sep2.setFixedHeight(1)
+        sep2.setStyleSheet(f'background:{ThemeManager.muted_color()}; opacity:0.3;')
+        body_layout.addWidget(sep2)
+
+        # 作者 + 链接行
+        info_row = QHBoxLayout()
+
+        author_lbl = QLabel(f'作者: <b>{AUTHOR}</b>  <a href="mailto:{AUTHOR_EMAIL}">{AUTHOR_EMAIL}</a>')
+        author_lbl.setOpenExternalLinks(True)
+        author_lbl.setStyleSheet('font-size:9px;')
+        info_row.addWidget(author_lbl, 1)
+
+        links_lbl = QLabel(
+            f'<a href="{GITHUB_URL}">GitHub</a>'
+            f'  ·  <a href="{RELEASES_URL}">发布页</a>'
+            f'  ·  <a href="{ISSUES_URL}">反馈 Bug</a>'
+            f'  ·  <a href="{LICENSE_URL}">{LICENSE_NAME}</a>'
+        )
+        links_lbl.setOpenExternalLinks(True)
+        links_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        links_lbl.setStyleSheet('font-size:9px;')
+        info_row.addWidget(links_lbl, 1)
+
+        body_layout.addLayout(info_row)
+        body_layout.addStretch()
+
+        root.addWidget(body, 1)
+
+        # ── 底部按钮 ─────────────────────────────────────────────────────
+        foot = QWidget()
+        foot.setStyleSheet(
+            f'border-top:1px solid {ThemeManager.muted_color()};'
+        )
+        foot_layout = QHBoxLayout(foot)
+        foot_layout.setContentsMargins(16, 8, 16, 8)
+
+        copy_lbl = QLabel(f'© 2024–2026 {AUTHOR}  ·  {LICENSE_NAME}')
+        copy_lbl.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:8px; border:none;')
+        foot_layout.addWidget(copy_lbl, 1)
+
+        close_btn = QPushButton('关闭')
+        close_btn.setFixedWidth(80)
+        close_btn.clicked.connect(self.accept)
+        close_btn.setDefault(True)
+        foot_layout.addWidget(close_btn)
+
+        root.addWidget(foot)

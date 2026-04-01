@@ -85,7 +85,7 @@ class WelcomeDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.setContentsMargins(16, 8, 16, 8)
         self._step_label = QLabel('')
-        self._step_label.setStyleSheet('color:#888; font-size:9px;')
+        self._step_label.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         btn_row.addWidget(self._step_label)
         btn_row.addStretch()
         self._back_btn = QPushButton('上一步')
@@ -139,14 +139,14 @@ class WelcomeDialog(QDialog):
         lay.addWidget(desc)
 
         features = QLabel(
-            '✦  可视化拖拽控件布局\n'
-            '✦  实时精灵图（DDS/PNG）渲染\n'
-            '✦  自动生成 .gui 脚本代码\n'
-            '✦  本地化文本预览\n'
-            '✦  撤销 / 重做 / 自动保存'
+            '•  可视化拖拽控件布局\n'
+            '•  实时精灵图（DDS/PNG）渲染\n'
+            '•  自动生成 .gui 脚本代码\n'
+            '•  本地化文本预览\n'
+            '•  撤销 / 重做 / 自动保存'
         )
         features.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        features.setStyleSheet('font-size:10px; color:#7ec8e3;')
+        features.setStyleSheet(f'font-size:10px; color:{ThemeManager.accent_color()};')
         lay.addWidget(features)
         lay.addStretch()
         return w
@@ -167,7 +167,7 @@ class WelcomeDialog(QDialog):
             '  Steam → 右键群星 → 管理 → 浏览本地文件'
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet('font-size:10px; color:#aaa;')
+        desc.setStyleSheet(f'font-size:10px; color:{ThemeManager.muted_color()};')
         lay.addWidget(desc)
 
         path_row = QHBoxLayout()
@@ -190,7 +190,7 @@ class WelcomeDialog(QDialog):
         lay.addWidget(self._game_dir_status)
 
         skip_note = QLabel('如果暂时没有游戏目录，可点击"下一步"跳过，之后在设置中补填。')
-        skip_note.setStyleSheet('color:#888; font-size:9px;')
+        skip_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         skip_note.setWordWrap(True)
         lay.addWidget(skip_note)
 
@@ -202,7 +202,7 @@ class WelcomeDialog(QDialog):
             if detected:
                 self._game_dir_edit.setText(detected)
                 self._game_dir_status.setText(
-                    f'✓ 已自动检测到游戏目录')
+                    f'[OK] 已自动检测到游戏目录')
                 self._game_dir_status.setStyleSheet('color:#2ecc71; font-size:9px;')
 
         lay.addStretch()
@@ -219,7 +219,7 @@ class WelcomeDialog(QDialog):
         lay.addWidget(title)
 
         desc = QLabel('选择您偏好的界面配色方案，可在"工具→设置→外观"中随时更改。')
-        desc.setStyleSheet('font-size:10px; color:#aaa;')
+        desc.setStyleSheet(f'font-size:10px; color:{ThemeManager.muted_color()};')
         desc.setWordWrap(True)
         lay.addWidget(desc)
 
@@ -288,7 +288,7 @@ class WelcomeDialog(QDialog):
         self._step_label.setText(f'第 {self._current + 1} 步，共 {total} 步')
         self._back_btn.setEnabled(self._current > 0)
         if self._current == total - 1:
-            self._next_btn.setText('开始使用 ✓')
+            self._next_btn.setText('开始使用')
         else:
             self._next_btn.setText('下一步 →')
 
@@ -340,7 +340,7 @@ class WelcomeDialog(QDialog):
         detected = self._settings.detect_game_dir()
         if detected:
             self._game_dir_edit.setText(detected)
-            self._game_dir_status.setText('✓ 已自动检测到游戏目录')
+            self._game_dir_status.setText('[OK] 已自动检测到游戏目录')
             self._game_dir_status.setStyleSheet('color:#2ecc71; font-size:9px;')
         else:
             self._game_dir_status.setText(
@@ -351,8 +351,8 @@ class WelcomeDialog(QDialog):
 
     def _validate_game_dir(self, path: str):
         if os.path.isdir(os.path.join(path, 'interface')):
-            self._game_dir_status.setText('✓ 路径有效（检测到 interface 目录）')
+            self._game_dir_status.setText('[OK] 路径有效（检测到 interface 目录）')
             self._game_dir_status.setStyleSheet('color:#2ecc71; font-size:9px;')
         else:
-            self._game_dir_status.setText('⚠ 未检测到 interface 子目录，请确认路径正确')
+            self._game_dir_status.setText('[!] 未检测到 interface 子目录，请确认路径正确')
             self._game_dir_status.setStyleSheet('color:#f39c12; font-size:9px;')

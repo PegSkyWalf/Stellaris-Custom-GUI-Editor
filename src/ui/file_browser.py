@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
 from ..core.resource_manager import ResourceManager
+from ..core.theme_manager import ThemeManager
 from ..core.logger import get_logger
 _log = get_logger('file_browser')
 
@@ -66,9 +67,9 @@ class FileBrowser(QWidget):
 
         if self._mod_dir:
             mod_root = QTreeWidgetItem(self._tree,
-                [f'📁 模组: {os.path.basename(self._mod_dir)}'])
+                [f'[D] 模组: {os.path.basename(self._mod_dir)}'])
             mod_root.setExpanded(True)
-            mod_root.setForeground(0, QColor('#7ec8e3'))
+            mod_root.setForeground(0, QColor(ThemeManager.accent_color()))
             # 只扫描 interface/ 子目录，避免递归遍历整个模组目录（含大量非 GUI 文件）
             mod_iface = os.path.join(self._mod_dir, 'interface')
             scan_root = mod_iface if os.path.isdir(mod_iface) else self._mod_dir
@@ -81,8 +82,8 @@ class FileBrowser(QWidget):
         if self._game_dir:
             iface = os.path.join(self._game_dir, 'interface')
             if os.path.isdir(iface):
-                game_root = QTreeWidgetItem(self._tree, ['📁 原版: interface'])
-                game_root.setForeground(0, QColor('#aaa'))
+                game_root = QTreeWidgetItem(self._tree, ['[D] 原版: interface'])
+                game_root.setForeground(0, QColor(ThemeManager.muted_color()))
                 self._add_directory_tree(game_root, iface,
                     filter_ext={'.gui', '.gfx'})
 
@@ -105,7 +106,7 @@ class FileBrowser(QWidget):
                     files.append((entry, full))
 
         for name, full in dirs:
-            di = QTreeWidgetItem(parent_item, [f'📁 {name}'])
+            di = QTreeWidgetItem(parent_item, [f'[D] {name}'])
             di.setData(0, Qt.ItemDataRole.UserRole, full)
             self._add_directory_tree(di, full, filter_ext)
             if di.childCount() == 0:
@@ -113,7 +114,7 @@ class FileBrowser(QWidget):
 
         for name, full in files:
             ext = os.path.splitext(name)[1].lower()
-            icon = '🎨' if ext in ('.gui', '.guicore') else '📄'
+            icon = '[G]' if ext in ('.gui', '.guicore') else '[F]'
             fi = QTreeWidgetItem(parent_item, [f'{icon} {name}'])
             fi.setData(0, Qt.ItemDataRole.UserRole, full)
             if ext in ('.gui', '.guicore'):

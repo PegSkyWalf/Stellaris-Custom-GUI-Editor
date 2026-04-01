@@ -20,9 +20,12 @@ from ..core.gui_model import (
     compute_widget_topleft, reverse_compute_position,
     orientation_to_anchor, origo_to_offset,
     resolve_editor_layout_sizes, effective_origo,
+    make_names_unique,
 )
 from ..core.resource_manager import ResourceManager
 from ..core.settings import AppSettings
+from ..core.snap_engine import SnapEngine
+from .snap_guide_overlay import SnapGuideOverlay
 from .widget_items import GUIWidgetItem
 
 if TYPE_CHECKING:
@@ -65,6 +68,11 @@ class GUIScene(QGraphicsScene):
         # inside option_list when an event context is set)
         self._hidden_template_items: list = []
 
+        # 智能吸附引擎和参考线叠层
+        self.snap_engine = SnapEngine()
+        self.snap_overlay = SnapGuideOverlay()
+        self.addItem(self.snap_overlay)
+
         self.selectionChanged.connect(self._on_selection_changed)
 
     def load_document(self, doc: GUIDocument):
@@ -75,6 +83,9 @@ class GUIScene(QGraphicsScene):
         self._event_context = None
         self.clear()
         self._node_to_item.clear()
+        # Re-add snap overlay after clear()
+        self.snap_overlay = SnapGuideOverlay()
+        self.addItem(self.snap_overlay)
         self.doc = doc
         settings = AppSettings.instance()
         cw, ch = settings.canvas_size
@@ -875,6 +886,10 @@ class GUIScene(QGraphicsScene):
             return None
         node = item.node
         new_node = node.clone()
+        # 自动为克隆节点生成唯一名称
+        if self.doc:
+            existing = {w.name for w in self.doc.all_widgets() if w.name}
+            make_names_unique(new_node, existing)
         x, y = new_node.position
         new_node.position = (x + 16, y + 16)
 
@@ -1116,12 +1131,17 @@ class GUIScene(QGraphicsScene):
         if not deltas:
             return
 
+        # Build undo commands for each move
+        from ..core.undo import MoveWidgetCommand, CompoundCommand
+        move_cmds = []
+
         # Apply all position changes silently (guard avoids signal cascade)
         self._refreshing = True
         try:
             for item, dx, dy in deltas:
                 if abs(dx) < 0.5 and abs(dy) < 0.5:
                     continue
+                old_pos = item.node.position
                 new_x = item.pos().x() + dx
                 new_y = item.pos().y() + dy
                 item.setPos(new_x, new_y)
@@ -1133,14 +1153,334 @@ class GUIScene(QGraphicsScene):
                     item.node.orientation, effective_origo(item.node),
                 )
                 item.node.position = new_pos
+                if old_pos != new_pos:
+                    move_cmds.append(MoveWidgetCommand(item.node, old_pos, new_pos))
         finally:
             self._refreshing = False
+
+        # Push compound undo command
+        if move_cmds and self.undo_stack:
+            n = len(move_cmds)
+            desc = f'对齐 {axis} ({n} 个控件)'
+            compound = CompoundCommand(move_cmds, desc)
+            self.undo_stack.push(compound, execute=False)
 
         if self.doc:
             self.doc.modified = True
         # One unified signal at the end
         self.document_modified.emit()
         self.widget_property_changed_signal.emit(items[0].node)
+
+    # ------------------------------------------------------------------
+    # Smart snap helpers (called by widget_items during drag)
+    # ------------------------------------------------------------------
+
+    def rebuild_snap_index(self, exclude_items: List[GUIWidgetItem]):
+        """重建吸附索引，排除正在拖拽的物体。"""
+        settings = AppSettings.instance()
+        self.snap_engine.threshold = settings.smart_snap_threshold
+        exclude_ids = {id(it) for it in exclude_items}
+        rects = []
+        for it in self.items():
+            if not isinstance(it, GUIWidgetItem):
+                continue
+            if id(it) in exclude_ids:
+                continue
+            if not it.isVisible():
+                continue
+            sp = it.scenePos()
+            r = it.rect()
+            rects.append((id(it), (sp.x(), sp.y(), r.width(), r.height())))
+        self.snap_engine.rebuild_index(rects)
+        # 更新强调色
+        accent = AppSettings.instance().accent_color
+        if not accent:
+            from ..core.theme_manager import AVAILABLE_THEMES, DEFAULT_THEME
+            theme = settings.theme
+            accent = AVAILABLE_THEMES.get(theme, AVAILABLE_THEMES[DEFAULT_THEME])[1]
+        self.snap_overlay.set_accent_color(accent)
+
+    def query_snap(self, item: GUIWidgetItem):
+        """查询吸附并应用修正。返回 SnapResult。"""
+        settings = AppSettings.instance()
+        if not settings.smart_snap_enabled:
+            return None
+        sp = item.scenePos()
+        r = item.rect()
+        result = self.snap_engine.query_snap(
+            (sp.x(), sp.y(), r.width(), r.height()),
+            snap_edges=settings.snap_to_edges,
+            snap_centers=settings.snap_to_centers,
+            snap_spacing=settings.snap_to_spacing,
+        )
+        self.snap_overlay.update_guides(result.guides)
+        return result
+
+    def clear_snap_guides(self):
+        """清除吸附参考线。"""
+        self.snap_overlay.clear_guides()
+
+    # ------------------------------------------------------------------
+    # Array, mirror, same-size operations
+    # ------------------------------------------------------------------
+
+    def _get_selected_pos_size(self) -> list:
+        """获取所有选中控件的 (position, size) 列表。"""
+        items = [i for i in self.selectedItems() if isinstance(i, GUIWidgetItem)]
+        return [(i, i.node.position, (i._display_w, i._display_h)) for i in items]
+
+    def linear_array_selected(self, count: int, offset_x: int, offset_y: int):
+        """对选中控件执行线性阵列。"""
+        from ..core.array_mirror import compute_linear_array
+        from ..core.undo import AddWidgetCommand, CompoundCommand
+
+        sel = self._get_selected_pos_size()
+        if not sel:
+            return
+
+        sources = [(pos, size) for _, pos, size in sel]
+        copies_per_step = compute_linear_array(sources, count, offset_x, offset_y)
+
+        cmds = []
+        new_items = []
+        existing_names = {w.name for w in self.doc.all_widgets() if w.name} if self.doc else set()
+        for step_copies in copies_per_step:
+            for i, ((nx, ny), (w, h)) in enumerate(step_copies):
+                src_item = sel[i][0]
+                src_node = src_item.node
+                new_node = src_node.clone()
+                make_names_unique(new_node, existing_names)
+                new_node.position = (nx, ny)
+                # 加入父节点或根列表
+                if src_node.parent:
+                    src_node.parent.add_child(new_node)
+                elif self.doc:
+                    self.doc.roots.append(new_node)
+                if self.undo_stack and self.doc:
+                    cmd = AddWidgetCommand(self.doc, new_node,
+                                           parent=src_node.parent)
+                    cmds.append(cmd)
+                new_items.append((new_node, src_item.parentItem()))
+
+        if cmds and self.undo_stack:
+            compound = CompoundCommand(cmds,
+                                       f'线性阵列 ({count} 副本)')
+            self.undo_stack.push(compound, execute=False)
+
+        # 创建场景 item
+        for new_node, parent_item in new_items:
+            self._create_item_for_node(new_node, parent_item)
+
+        if self.doc:
+            self.doc.modified = True
+        self.document_modified.emit()
+
+    def circular_array_selected(self, count: int, center_x: float,
+                                center_y: float, radius: float,
+                                mode: str = 'center'):
+        """对选中控件执行圆形阵列。"""
+        from ..core.array_mirror import compute_circular_array
+        from ..core.undo import (AddWidgetCommand, MoveWidgetCommand,
+                                 CompoundCommand)
+
+        sel = self._get_selected_pos_size()
+        if not sel:
+            return
+
+        sources = [(pos, size) for _, pos, size in sel]
+
+        # center 模式：以选中控件的集合中心为圆心，忽略 dialog 传来的坐标
+        if mode == 'center':
+            actual_cx = sum((pos[0] + size[0] / 2) for _, pos, size in sel) / len(sel)
+            actual_cy = sum((pos[1] + size[1] / 2) for _, pos, size in sel) / len(sel)
+        else:
+            actual_cx, actual_cy = center_x, center_y
+
+        copies_per_step, original_moves = compute_circular_array(
+            sources, count, actual_cx, actual_cy, radius, mode=mode)
+
+        cmds = []
+        new_items = []
+        existing_names = {w.name for w in self.doc.all_widgets() if w.name} if self.doc else set()
+
+        # on_ring 模式：先移动原件到环上起始位置
+        if mode == 'on_ring' and original_moves:
+            for i, ((nx, ny), _) in enumerate(original_moves):
+                src_item = sel[i][0]
+                src_node = src_item.node
+                old_pos = src_node.position
+                if old_pos != (nx, ny):
+                    src_node.position = (nx, ny)
+                    src_node.mark_source_modified()
+                    if self.undo_stack and self.doc:
+                        cmd = MoveWidgetCommand(self.doc, src_node,
+                                                old_pos, (nx, ny))
+                        cmds.append(cmd)
+                    self._refresh_item_position(src_item)
+
+        # 创建新副本
+        for step_copies in copies_per_step:
+            for i, ((nx, ny), (w, h)) in enumerate(step_copies):
+                src_item = sel[i][0]
+                src_node = src_item.node
+                new_node = src_node.clone()
+                make_names_unique(new_node, existing_names)
+                new_node.position = (nx, ny)
+                if src_node.parent:
+                    src_node.parent.add_child(new_node)
+                elif self.doc:
+                    self.doc.roots.append(new_node)
+                if self.undo_stack and self.doc:
+                    cmd = AddWidgetCommand(self.doc, new_node,
+                                           parent=src_node.parent)
+                    cmds.append(cmd)
+                new_items.append((new_node, src_item.parentItem()))
+
+        if cmds and self.undo_stack:
+            compound = CompoundCommand(cmds,
+                                       f'圆形阵列 ({count} 份)')
+            self.undo_stack.push(compound, execute=False)
+
+        for new_node, parent_item in new_items:
+            self._create_item_for_node(new_node, parent_item)
+
+        if self.doc:
+            self.doc.modified = True
+        self.document_modified.emit()
+
+    def mirror_selected(self, axis: str, copy: bool = True):
+        """对选中控件执行镜像操作。"""
+        from ..core.array_mirror import compute_mirror
+        from ..core.undo import (MoveWidgetCommand, AddWidgetCommand,
+                                 CompoundCommand)
+
+        sel = self._get_selected_pos_size()
+        if not sel:
+            return
+
+        sources = [(pos, size) for _, pos, size in sel]
+        mirrored = compute_mirror(sources, axis)
+
+        cmds = []
+        if copy:
+            # 镜像复制：创建新控件
+            new_items = []
+            existing_names = {w.name for w in self.doc.all_widgets() if w.name} if self.doc else set()
+            for i, ((nx, ny), (w, h)) in enumerate(mirrored):
+                src_item = sel[i][0]
+                src_node = src_item.node
+                new_node = src_node.clone()
+                make_names_unique(new_node, existing_names)
+                new_node.position = (nx, ny)
+                if src_node.parent:
+                    src_node.parent.add_child(new_node)
+                elif self.doc:
+                    self.doc.roots.append(new_node)
+                if self.undo_stack and self.doc:
+                    cmd = AddWidgetCommand(self.doc, new_node,
+                                           parent=src_node.parent)
+                    cmds.append(cmd)
+                new_items.append((new_node, src_item.parentItem()))
+
+            if cmds and self.undo_stack:
+                axis_name = '水平' if axis == 'h' else '垂直'
+                compound = CompoundCommand(cmds,
+                                           f'镜像复制 ({axis_name})')
+                self.undo_stack.push(compound, execute=False)
+
+            for new_node, parent_item in new_items:
+                self._create_item_for_node(new_node, parent_item)
+        else:
+            # 镜像移动：改变原控件位置
+            for i, ((nx, ny), (w, h)) in enumerate(mirrored):
+                item = sel[i][0]
+                old_pos = item.node.position
+                new_pos = (nx, ny)
+                item.node.position = new_pos
+                if old_pos != new_pos:
+                    cmds.append(MoveWidgetCommand(item.node, old_pos, new_pos))
+                # 更新 item 位置
+                self._refresh_item_position(item)
+
+            if cmds and self.undo_stack:
+                axis_name = '水平' if axis == 'h' else '垂直'
+                compound = CompoundCommand(cmds,
+                                           f'镜像 ({axis_name})')
+                self.undo_stack.push(compound, execute=False)
+
+        if self.doc:
+            self.doc.modified = True
+        self.document_modified.emit()
+
+    def make_same_size(self, mode: str = 'width'):
+        """使选中控件具有相同尺寸。mode: 'width'/'height'/'both'"""
+        from ..core.undo import ResizeWidgetCommand, CompoundCommand
+
+        items = [i for i in self.selectedItems() if isinstance(i, GUIWidgetItem)]
+        if len(items) < 2:
+            return
+
+        # 以第一个选中的控件为参考
+        ref = items[0]
+        ref_w, ref_h = ref._display_w, ref._display_h
+
+        cmds = []
+        for item in items[1:]:
+            old_size = (item._display_w, item._display_h)
+            w, h = old_size
+            if mode in ('width', 'both'):
+                w = ref_w
+            if mode in ('height', 'both'):
+                h = ref_h
+            new_size = (w, h)
+            if old_size != new_size:
+                item.node.size = new_size
+                cmds.append(ResizeWidgetCommand(item.node, old_size, new_size))
+                self._refresh_item_position(item)
+
+        if cmds and self.undo_stack:
+            desc = {'width': '相同宽度', 'height': '相同高度', 'both': '相同尺寸'}
+            compound = CompoundCommand(cmds, desc.get(mode, '相同尺寸'))
+            self.undo_stack.push(compound, execute=False)
+
+        if self.doc:
+            self.doc.modified = True
+        self.document_modified.emit()
+
+    def _create_item_for_node(self, node: WidgetNode,
+                              parent_item=None):
+        """为节点创建场景 item 并添加到场景。"""
+        rm = ResourceManager.instance()
+        settings = AppSettings.instance()
+        if parent_item and isinstance(parent_item, GUIWidgetItem):
+            pw, ph = parent_item._display_w, parent_item._display_h
+        else:
+            pw, ph = settings.canvas_size
+            parent_item = None
+        dw, dh = self._get_display_size(node, rm)
+        px, py = node.position
+        tl_x, tl_y = compute_widget_topleft(
+            pw, ph, dw, dh,
+            node.orientation, effective_origo(node), px, py)
+        new_item = GUIWidgetItem(node, parent_item=parent_item)
+        new_item.setPos(tl_x, tl_y)
+        if parent_item is None:
+            self.addItem(new_item)
+        self._node_to_item[id(node)] = new_item
+        new_item.set_preview_mode(self._preview_mode)
+        return new_item
+
+    def _refresh_item_position(self, item: GUIWidgetItem):
+        """从节点数据刷新 item 的 Qt 位置。"""
+        node = item.node
+        pw, ph = item._get_parent_size()
+        rm = ResourceManager.instance()
+        dw, dh = self._get_display_size(node, rm)
+        px, py = node.position
+        tl_x, tl_y = compute_widget_topleft(
+            pw, ph, dw, dh,
+            node.orientation, effective_origo(node), px, py)
+        item.setPos(tl_x, tl_y)
 
     # ------------------------------------------------------------------
     # Background

@@ -7,12 +7,13 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QListWidget, QListWidgetItem,
-    QInputDialog,
+    QInputDialog, QApplication,
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPen
+from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPen, QPalette
 
 from ..core.gui_model import WIDGET_TYPES, WIDGET_LABELS, WIDGET_COLORS, DEFAULT_SIZE
+from ..core.theme_manager import ThemeManager
 
 
 def _make_type_icon(color_str: str, size: int = 22) -> QIcon:
@@ -64,7 +65,7 @@ class WidgetLibrary(QWidget):
 
         hint = QLabel('双击添加到画布中心')
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet('color: #888; font-size: 9px;')
+        hint.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(hint)
 
         self._list = QListWidget()
@@ -88,7 +89,7 @@ class WidgetLibrary(QWidget):
         def _sep(text):
             sep = QListWidgetItem(f'─── {text} ───')
             sep.setFlags(Qt.ItemFlag.NoItemFlags)
-            sep.setForeground(QColor('#666'))
+            sep.setForeground(QApplication.palette().color(QPalette.ColorRole.Mid))
             self._list.addItem(sep)
 
         _sep('容器类型')
@@ -149,7 +150,7 @@ class PresetLibrary(QWidget):
 
         hint = QLabel('保存和复用控件模板')
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet('color: #888; font-size: 9px;')
+        hint.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(hint)
 
         self._list = QListWidget()

@@ -27,6 +27,7 @@ from PySide6.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QK
 
 from ..core.pdx_parser import parse_text, pairs_to_dict
 from ..core.resource_manager import ResourceManager
+from ..core.theme_manager import ThemeManager
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +100,7 @@ class ButtonEffectsEditor(QWidget):
         # ── Top toolbar ─────────────────────────────────────────────
         toolbar = QHBoxLayout()
         self._file_label = QLabel('未打开文件')
-        self._file_label.setStyleSheet('color: #888; font-size: 9px;')
+        self._file_label.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         toolbar.addWidget(self._file_label, 1)
 
         open_btn = QPushButton('打开文件')
@@ -215,7 +216,7 @@ class ButtonEffectsEditor(QWidget):
             'potential: 按钮显示条件   allow: 按钮可点击条件   effect: 点击执行的效果\n'
             '可用作用域: This = 当前所选对象  From = 玩家国家'
         )
-        note.setStyleSheet('color: #888; font-size: 8px;')
+        note.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 8px;')
         note.setWordWrap(True)
         right_layout.addWidget(note)
 
@@ -227,7 +228,7 @@ class ButtonEffectsEditor(QWidget):
 
         # ── Status bar ──────────────────────────────────────────────
         self._status = QLabel('')
-        self._status.setStyleSheet('color: #7ec8e3; font-size: 9px;')
+        self._status.setStyleSheet(f'color: {ThemeManager.accent_color()}; font-size: 9px;')
         layout.addWidget(self._status)
 
         self._set_editor_enabled(False)

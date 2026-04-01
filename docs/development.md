@@ -570,4 +570,4 @@ self._custom_renderers['my_property'] = MyCustomWidget
 
 ---
 
-*文档版本：v1.0.0 | 2026-03-26*
+*文档版本：v1.2.0 | 2026-04-02*

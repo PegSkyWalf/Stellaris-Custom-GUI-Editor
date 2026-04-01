@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
 from ..core.resource_manager import ResourceManager
+from ..core.theme_manager import ThemeManager
 
 
 class EventLinkPanel(QWidget):
@@ -36,11 +37,11 @@ class EventLinkPanel(QWidget):
         layout.setSpacing(4)
 
         hdr = QLabel('事件关联面板')
-        hdr.setStyleSheet('font-weight:bold; color:#7ec8e3; padding:2px;')
+        hdr.setStyleSheet(f'font-weight:bold; color:{ThemeManager.accent_color()}; padding:2px;')
         layout.addWidget(hdr)
 
         self._gui_label = QLabel('无当前 GUI')
-        self._gui_label.setStyleSheet('color:#888; font-size:9px;')
+        self._gui_label.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         layout.addWidget(self._gui_label)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -116,7 +117,7 @@ class EventLinkPanel(QWidget):
 
         if not self._events:
             item = QListWidgetItem('（未找到引用此 GUI 的事件）')
-            item.setForeground(QColor('#888'))
+            item.setForeground(QColor(ThemeManager.muted_color()))
             self._list.addItem(item)
             return
 

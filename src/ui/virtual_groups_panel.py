@@ -14,16 +14,12 @@ from PySide6.QtWidgets import (
     QToolBar, QSizePolicy, QFrame,
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QColor, QIcon, QPixmap, QAction, QFont
+from PySide6.QtGui import QColor, QAction, QFont
 
 from ..core.virtual_groups import VirtualGroup, VirtualGroupManager
 from ..core.gui_model import GUIDocument
-
-
-def _color_icon(color: str, size: int = 12) -> QIcon:
-    pm = QPixmap(size, size)
-    pm.fill(QColor(color))
-    return QIcon(pm)
+from ..core.theme_manager import ThemeManager
+from .icon_provider import IconProvider
 
 
 _ROLE_TYPE = Qt.ItemDataRole.UserRole        # 'group' or 'member'
@@ -37,7 +33,7 @@ class VirtualGroupsPanel(QWidget):
 
     Layout (Qt Designer-inspired):
     ┌──────────────────────────────────────────┐
-    │  [+] [+子] [重命名] [🗑] [👁] [◀ 添加选中]  │  ← toolbar
+    │  [+组] [+子] [重命名] [删除] [可见] [<添加] [>移除] │  ← toolbar
     ├──────────────────────────────────────────┤
     │  Group tree (with member sub-items)       │
     ├──────────────────────────────────────────┤
@@ -68,23 +64,30 @@ class VirtualGroupsPanel(QWidget):
         tb.setIconSize(QSize(14, 14))
         tb.setMovable(False)
 
-        def _act(label: str, tip: str, slot) -> QAction:
+        self._icon_actions: list[tuple[QAction, str]] = []  # (action, icon_name)
+
+        def _act(label: str, tip: str, slot, icon_name: str = '') -> QAction:
             a = QAction(label, tb)
             a.setToolTip(tip)
+            if icon_name:
+                a.setIcon(IconProvider.themed_icon(icon_name, size=14))
+                self._icon_actions.append((a, icon_name))
             a.triggered.connect(slot)
             tb.addAction(a)
             return a
 
-        _act('+组', '新建顶层编组', self._create_root_group)
-        _act('+子', '在当前组内新建子组', self._create_child_group)
+        _act('组', '新建顶层编组', self._create_root_group, 'plus')
+        _act('子', '在当前组内新建子组', self._create_child_group, 'plus')
         tb.addSeparator()
         _act('重命名', '重命名当前组', self._rename_selected)
-        _act('🗑', '删除当前组', self._delete_selected)
+        _act('', '删除当前组', self._delete_selected, 'trash')
         tb.addSeparator()
-        _act('👁', '切换可见性', self._toggle_visibility_selected)
+        _act('', '切换可见性', self._toggle_visibility_selected, 'eye')
         tb.addSeparator()
-        _act('◀ 添加选中控件', '将画布中选中的控件加入当前编组', self._add_canvas_selection)
-        _act('▶ 移除选中控件', '将选中的控件从当前组中移除', self._remove_canvas_selection)
+        _act('从选中建组', '将画布选中控件创建为新编组', self._create_group_from_selection, 'plus')
+        tb.addSeparator()
+        _act(' 添加选中控件', '将画布中选中的控件加入当前编组', self._add_canvas_selection, 'chevron-left')
+        _act(' 移除选中控件', '将选中的控件从当前组中移除', self._remove_canvas_selection, 'chevron-right')
         layout.addWidget(tb)
 
         # ── Group tree ─────────────────────────────────────────────────
@@ -107,7 +110,7 @@ class VirtualGroupsPanel(QWidget):
 
         # ── Status bar ─────────────────────────────────────────────────
         self._status = QLabel()
-        self._status.setStyleSheet('color:#888; font-size:9px; padding:2px;')
+        self._status.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px; padding:2px;')
         layout.addWidget(self._status)
 
     # ------------------------------------------------------------------
@@ -121,6 +124,14 @@ class VirtualGroupsPanel(QWidget):
 
     def set_canvas(self, canvas):
         self._canvas = canvas
+
+    def refresh_icons(self):
+        """主题切换后刷新工具栏图标和树节点图标。"""
+        for action, icon_name in self._icon_actions:
+            action.setIcon(IconProvider.themed_icon(icon_name, size=14))
+        self._status.setStyleSheet(
+            f'color:{ThemeManager.muted_color()}; font-size:9px; padding:2px;')
+        self._rebuild_tree()
 
     def refresh(self):
         self._rebuild_tree()
@@ -147,7 +158,7 @@ class VirtualGroupsPanel(QWidget):
         for name in group.node_names:
             m = QTreeWidgetItem(item)
             m.setText(0, f'  · {name}')
-            m.setForeground(0, QColor('#88aacc'))
+            m.setForeground(0, QColor(ThemeManager.accent_color()))
             m.setData(0, _ROLE_TYPE, 'member')
             m.setData(0, _ROLE_ID,   name)
             m.setData(0, _ROLE_GID,  group.id)
@@ -157,15 +168,16 @@ class VirtualGroupsPanel(QWidget):
         return item
 
     def _update_group_item(self, item: QTreeWidgetItem, group: VirtualGroup):
-        vis = '👁 ' if group.visible else '🚫 '
         member_count = len(group.node_names)
         child_count  = len(group.children)
         suffix = ''
         if member_count: suffix += f'  [{member_count}]'
         if child_count:  suffix += f'  +{child_count}子'
-        item.setText(0, f'{vis}{group.name}{suffix}')
-        item.setIcon(0, _color_icon(group.color))
-        item.setForeground(0, QColor(group.color if group.visible else '#555'))
+        item.setText(0, f'{group.name}{suffix}')
+        # 使用 SVG 图标代替 emoji 指示可见性，同时叠加颜色标记
+        vis_icon_name = 'eye' if group.visible else 'eye-off'
+        item.setIcon(0, IconProvider.icon(vis_icon_name, size=14, color=group.color))
+        item.setForeground(0, QColor(group.color if group.visible else ThemeManager.muted_color()))
         item.setFont(0, QFont('Microsoft YaHei', 9, QFont.Weight.Medium))
         item.setData(0, _ROLE_TYPE, 'group')
         item.setData(0, _ROLE_ID,   group.id)
@@ -249,12 +261,35 @@ class VirtualGroupsPanel(QWidget):
                 menu.addAction('删除组', lambda: self._delete_group(gid))
         else:
             menu.addAction('新建顶层组', self._create_root_group)
+            menu.addAction('从选中控件建组', self._create_group_from_selection)
 
         menu.exec(self._tree.viewport().mapToGlobal(pos))
 
     # ------------------------------------------------------------------
     # Group operations
     # ------------------------------------------------------------------
+
+    def _create_group_from_selection(self):
+        """从画布当前选中控件创建新编组。"""
+        if not self._manager:
+            return
+        if not self._canvas:
+            QMessageBox.information(self, '提示', '请先打开文件。')
+            return
+        nodes = getattr(self._canvas.gui_scene, 'get_selected_nodes', lambda: [])()
+        names = [n.name for n in nodes if n.name]
+        if not names:
+            QMessageBox.information(self, '提示', '请先在画布中选中已命名控件。')
+            return
+        default_name = f'编组 ({len(names)}个控件)'
+        name, ok = QInputDialog.getText(self, '从选中控件建组', '编组名称:', text=default_name)
+        if not ok or not name.strip():
+            return
+        group = self._manager.create_group(name.strip())
+        self._manager.add_nodes_to_group(group, names)
+        self._manager.save()
+        self._rebuild_tree()
+        self._status.setText(f'已创建编组 [{name.strip()}]，包含 {len(names)} 个控件')
 
     def _create_root_group(self):
         if not self._manager: return
@@ -358,7 +393,7 @@ class VirtualGroupsPanel(QWidget):
             for name in group.node_names:
                 m = QTreeWidgetItem(item)
                 m.setText(0, f'  · {name}')
-                m.setForeground(0, QColor('#88aacc'))
+                m.setForeground(0, QColor(ThemeManager.accent_color()))
                 m.setData(0, _ROLE_TYPE, 'member')
                 m.setData(0, _ROLE_ID,   name)
                 m.setData(0, _ROLE_GID,  group.id)

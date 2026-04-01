@@ -1,6 +1,14 @@
 # Stellaris Custom-GUI Editor — User Manual (English)
 
-**Version**: 1.0.0 | **Date**: 2026-03-26
+**Version**: 1.2.0 | **Date**: 2026-04-02
+
+---
+
+> ⚠️ **Safety Warning — Please read before use**
+>
+> This tool **directly modifies `.gui` files**. Always **back up all your original resource files** before using this editor.  
+> It is strongly recommended to work on an isolated copy of your mod. **Never edit unbackedup game files or already-published mod files.**  
+> There is no automatic backup or undo for file-level writes — once saved, the original is overwritten.
 
 ---
 
@@ -611,5 +619,5 @@ A: Find the log file at `C:\Users\YourName\.stellaris_gui_editor\logs\`. Attach 
 
 ---
 
-*Manual Version: 1.0.0 | 2026-03-26*  
+*Manual Version: 1.2.0 | 2026-04-02*  
 *GitHub: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor*

@@ -18,10 +18,43 @@ Key concepts (from Stellaris GUI system):
 """
 from __future__ import annotations
 import copy
+import re
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple
 
-from .pdx_parser import pairs_to_dict, parse_text
+from .pdx_parser import pairs_to_dict, parse_text, SourceSpan, WidgetSpanInfo
+
+
+# ---------------------------------------------------------------------------
+# Name uniquification helpers
+# ---------------------------------------------------------------------------
+
+_TRAILING_NUM_RE = re.compile(r'^(.+?)_(\d+)$')
+
+
+def generate_unique_name(base_name: str, existing_names: Set[str]) -> str:
+    """给名称添加递增序号直到不重复。'button' → 'button_1', 'button_2', ..."""
+    if not base_name:
+        return base_name
+    m = _TRAILING_NUM_RE.match(base_name)
+    stem = m.group(1) if m else base_name
+    i = 1
+    while True:
+        candidate = f'{stem}_{i}'
+        if candidate not in existing_names:
+            return candidate
+        i += 1
+
+
+def make_names_unique(node: 'WidgetNode', existing_names: Set[str]) -> None:
+    """递归重命名克隆节点树，确保所有名称唯一。existing_names 会被原地更新。"""
+    name = node.properties.get('name', '')
+    if name:
+        new_name = generate_unique_name(name, existing_names)
+        node.properties['name'] = new_name
+        existing_names.add(new_name)
+    for child in node.children:
+        make_names_unique(child, existing_names)
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +380,11 @@ class WidgetNode:
     _editor_resolved_size: Optional[Tuple[int, int]] = field(default=None, repr=False, compare=False)
     # Editor-only protection flag (not persisted)
     _protected: bool = field(default=False, repr=False, compare=False)
+    # --- 源码保留（roundtrip）字段 ---
+    # 该 widget 在原始源码中的字符偏移范围 [start, end)
+    _source_span: Optional[SourceSpan] = field(default=None, repr=False, compare=False)
+    # 标记该 widget 是否被编辑器修改过（属性变更、子节点增删等）
+    _source_modified: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self):
         # Auto-protect known vanilla mandatory controls
@@ -379,6 +417,7 @@ class WidgetNode:
     def position(self, value: Tuple[int, int]):
         self.properties['position'] = {'x': int(value[0]), 'y': int(value[1])}
         self._dirty = True
+        self._source_modified = True
 
     def has_explicit_size_property(self) -> bool:
         """True if the script contains a size = { ... } line (key present)."""
@@ -448,12 +487,14 @@ class WidgetNode:
     def size(self, value: Tuple[int, int]):
         self.properties['size'] = {'width': max(1, int(value[0])), 'height': max(1, int(value[1]))}
         self._dirty = True
+        self._source_modified = True
 
     def clear_size_property(self):
         """Remove size from script (implicit container)."""
         self.properties.pop('size', None)
         self._editor_layout_size = None
         self._dirty = True
+        self._source_modified = True
 
     # ---- orientation ----
     @property
@@ -466,6 +507,7 @@ class WidgetNode:
     def orientation(self, value: str):
         self.properties['orientation'] = value
         self._dirty = True
+        self._source_modified = True
 
     # ---- origo ----
     @property
@@ -477,6 +519,7 @@ class WidgetNode:
     def origo(self, value: str):
         self.properties['origo'] = value
         self._dirty = True
+        self._source_modified = True
 
     # ---- scale ----
     @property
@@ -491,6 +534,7 @@ class WidgetNode:
     def scale(self, value: float):
         self.properties['scale'] = round(float(value), 4)
         self._dirty = True
+        self._source_modified = True
 
     # ---- sprite ----
     def get_sprite_name(self) -> Optional[str]:
@@ -593,9 +637,22 @@ class WidgetNode:
             widget_type=self.widget_type,
             properties=copy.deepcopy(self.properties),
         )
+        # 克隆的节点没有原始源码关联，标记为已修改
+        new._source_span = None
+        new._source_modified = True
         for child in self.children:
             new.add_child(child.clone())
         return new
+
+    def is_subtree_modified(self) -> bool:
+        """检查此节点或其任何后代是否被编辑器修改过。"""
+        if self._source_modified:
+            return True
+        return any(child.is_subtree_modified() for child in self.children)
+
+    def mark_source_modified(self):
+        """标记此 widget 已被修改（用于 undo 命令等外部调用）。"""
+        self._source_modified = True
 
     def compute_topleft_in_parent(self, parent_w: float, parent_h: float) -> Tuple[float, float]:
         """
@@ -624,6 +681,13 @@ class GUIDocument:
     roots: List[WidgetNode] = field(default_factory=list)
     variables: Dict[str, Any] = field(default_factory=dict)
     modified: bool = False
+    # --- 源码保留（roundtrip）字段 ---
+    # 原始文件内容（用于 patch 式保存）
+    _raw_source: str = field(default='', repr=False, compare=False)
+    # guiTypes 块的字符偏移范围
+    _guitypes_span: Optional[SourceSpan] = field(default=None, repr=False, compare=False)
+    # guiTypes 块内部（{ 之后到 } 之前）的字符偏移范围
+    _guitypes_inner_span: Optional[SourceSpan] = field(default=None, repr=False, compare=False)
 
     def all_widgets(self) -> List[WidgetNode]:
         result = []
@@ -657,11 +721,20 @@ def _normalize_widget_key(key: str) -> str:
 _WIDGET_KEYS_LOWER = {k.lower(): k for k in _WIDGET_KEYS_CANONICAL}
 
 
-def _build_node(widget_type: str, pairs: list) -> WidgetNode:
-    """Build a WidgetNode from a list of (key, value) pairs."""
+def _build_node(widget_type: str, pairs: list,
+                span_info: Optional[WidgetSpanInfo] = None) -> WidgetNode:
+    """Build a WidgetNode from a list of (key, value) pairs.
+
+    If span_info is provided, source span info is attached to the node
+    and recursively to child nodes for roundtrip preservation.
+    """
     node = WidgetNode(widget_type=_normalize_widget_key(widget_type))
     props = {}
     children = []
+
+    # 构建子 widget span 查找表（按 widget_type + 出现顺序）
+    child_span_list = list(span_info.children) if span_info else []
+    child_span_idx: Dict[str, int] = {}  # type -> 下一个可用 index
 
     for key, val in pairs:
         key_lower = key.lower()
@@ -671,7 +744,14 @@ def _build_node(widget_type: str, pairs: list) -> WidgetNode:
         normalized_key = _WIDGET_KEYS_LOWER.get(key_lower, key)
 
         if normalized_key in _WIDGET_KEYS and isinstance(val, list):
-            child = _build_node(normalized_key, val)
+            # 查找匹配的子 span
+            child_span = None
+            for cs in child_span_list:
+                if cs.widget_type.lower() == key_lower:
+                    child_span = cs
+                    child_span_list.remove(cs)
+                    break
+            child = _build_node(normalized_key, val, child_span)
             children.append(child)
         elif key_lower in {k.lower() for k in _PROPERTY_BLOCK_KEYS} and isinstance(val, list):
             # Property sub-block → store as dict
@@ -696,16 +776,23 @@ def _build_node(widget_type: str, pairs: list) -> WidgetNode:
     node.properties = props
     for child in children:
         node.add_child(child)
+
+    # 附加源码 span 信息
+    if span_info:
+        node._source_span = span_info.full_span
+
     return node
 
 
 def parse_gui_file(path: str) -> GUIDocument:
     """Parse a .gui or .guicore file into a GUIDocument.
+
     Uses multi-encoding fallback and error recovery for robustness with modded files.
+    Stores raw source text and source spans for roundtrip-preserving save.
     """
-    from .pdx_parser import parse_file, ParseError
+    from .pdx_parser import parse_file, parse_file_with_spans, ParseError
     try:
-        pairs = parse_file(path)
+        result = parse_file_with_spans(path)
     except ParseError as e:
         import warnings
         warnings.warn(f'PDX parse error in {path}: {e}')
@@ -716,21 +803,37 @@ def parse_gui_file(path: str) -> GUIDocument:
         return GUIDocument(file_path=path)
 
     doc = GUIDocument(file_path=path)
-    _process_pairs_into_doc(pairs, doc)
+    doc._raw_source = result.raw_source
+    doc._guitypes_span = result.guitypes_span
+    doc._guitypes_inner_span = result.guitypes_inner_span
+    _process_pairs_into_doc_with_spans(result.pairs, result.widget_spans, doc)
     return doc
 
 
 def parse_gui_text(text: str, file_path: str = '<text>') -> GUIDocument:
-    """Parse .gui text content into a GUIDocument."""
-    from .pdx_parser import parse_text as _parse_text
-    try:
-        pairs = _parse_text(text)
-    except Exception:
-        return GUIDocument(file_path=file_path)
+    """Parse .gui text content into a GUIDocument.
 
-    doc = GUIDocument(file_path=file_path)
-    _process_pairs_into_doc(pairs, doc)
-    return doc
+    Also stores raw source and span info for roundtrip preservation.
+    """
+    from .pdx_parser import PDXParser
+    try:
+        parser = PDXParser(text)
+        result = parser.parse_with_spans()
+        doc = GUIDocument(file_path=file_path)
+        doc._raw_source = result.raw_source
+        doc._guitypes_span = result.guitypes_span
+        doc._guitypes_inner_span = result.guitypes_inner_span
+        _process_pairs_into_doc_with_spans(result.pairs, result.widget_spans, doc)
+        return doc
+    except Exception:
+        from .pdx_parser import parse_text as _parse_text
+        try:
+            pairs = _parse_text(text)
+        except Exception:
+            return GUIDocument(file_path=file_path)
+        doc = GUIDocument(file_path=file_path)
+        _process_pairs_into_doc(pairs, doc)
+        return doc
 
 
 def _process_pairs_into_doc(pairs: list, doc: GUIDocument):
@@ -744,6 +847,39 @@ def _process_pairs_into_doc(pairs: list, doc: GUIDocument):
                     doc.roots.append(node)
         elif key_lower in _all_widget_keys_lower and isinstance(val, list):
             node = _build_node(key, val)
+            doc.roots.append(node)
+
+
+def _process_pairs_into_doc_with_spans(pairs: list,
+                                        widget_spans: list,
+                                        doc: GUIDocument):
+    """Process parsed pairs into GUIDocument with source span info attached."""
+    _all_widget_keys_lower = {k.lower() for k in _WIDGET_KEYS}
+    # 构建 span 查找列表（按顺序消费）
+    remaining_spans = list(widget_spans)
+
+    for key, val in pairs:
+        key_lower = key.lower()
+        if key_lower == 'guitypes' and isinstance(val, list):
+            for sub_key, sub_val in val:
+                if sub_key.lower() in _all_widget_keys_lower and isinstance(sub_val, list):
+                    # 查找匹配的 span
+                    span = None
+                    for s in remaining_spans:
+                        if s.widget_type.lower() == sub_key.lower():
+                            span = s
+                            remaining_spans.remove(s)
+                            break
+                    node = _build_node(sub_key, sub_val, span)
+                    doc.roots.append(node)
+        elif key_lower in _all_widget_keys_lower and isinstance(val, list):
+            span = None
+            for s in remaining_spans:
+                if s.widget_type.lower() == key_lower:
+                    span = s
+                    remaining_spans.remove(s)
+                    break
+            node = _build_node(key, val, span)
             doc.roots.append(node)
 
 

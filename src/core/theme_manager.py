@@ -203,6 +203,26 @@ DEFAULT_THEME = 'dark'
 class ThemeManager:
     """静态工具类，负责将主题应用到 QApplication。"""
 
+    # 当前主题颜色 — 供 UI 代码获取主题感知颜色
+    _current_muted: str = '#888888'
+    _current_accent: str = '#4a9fd4'
+    _current_fg: str = '#dddddd'
+
+    @staticmethod
+    def muted_color() -> str:
+        """返回当前主题的弱化文本颜色（如注释、提示文字）。"""
+        return ThemeManager._current_muted
+
+    @staticmethod
+    def accent_color() -> str:
+        """返回当前主题的强调色。"""
+        return ThemeManager._current_accent
+
+    @staticmethod
+    def fg_color() -> str:
+        """返回当前主题的前景文本颜色。"""
+        return ThemeManager._current_fg
+
     @staticmethod
     def apply(app: QApplication, theme: str = DEFAULT_THEME,
               accent: Optional[str] = None) -> None:
@@ -232,6 +252,20 @@ class ThemeManager:
 
         app.setPalette(palette)
         app.setStyleSheet(qss)
+
+        # 保存当前主题颜色供 UI 代码使用
+        fg = palette.color(QPalette.ColorRole.WindowText).name()
+        muted = '#888888' if is_dark_theme(theme) else '#666666'
+        ThemeManager._current_fg = fg
+        ThemeManager._current_accent = effective_accent
+        ThemeManager._current_muted = muted
+
+        # 更新图标提供器的主题颜色
+        try:
+            from ..ui.icon_provider import IconProvider
+            IconProvider.set_theme_colors(fg, effective_accent, muted)
+        except Exception:
+            pass  # 模块未加载时忽略
 
     @staticmethod
     def theme_display_name(theme: str) -> str:

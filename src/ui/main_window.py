@@ -53,7 +53,9 @@ from .layer_panel import LayerPanel
 from .button_effects_editor import ButtonEffectsEditor
 from .virtual_groups_panel import VirtualGroupsPanel
 from .event_link_panel import EventLinkPanel
+from .name_warnings_panel import NameWarningsPanel
 from .dialogs import SettingsDialog, NewFileDialog, AboutDialog, ShortcutsDialog
+from .icon_provider import IconProvider
 from ..core.virtual_groups import VirtualGroupManager
 from ..core.theme_manager import ThemeManager
 
@@ -444,6 +446,7 @@ class MainWindow(QMainWindow):
         vgroup_dock.setWidget(self._vgroup_panel)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, vgroup_dock)
         self.tabifyDockWidget(layer_dock, vgroup_dock)
+        layer_dock.raise_()  # 默认显示图层标签页
 
         # 右侧：属性面板 + 精灵图库
         props_dock = QDockWidget('属性', self)
@@ -474,6 +477,15 @@ class MainWindow(QMainWindow):
         self._code_view = CodeView()
         code_dock.setWidget(self._code_view)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, code_dock)
+
+        # 名称重复警告面板
+        warnings_dock = QDockWidget('名称警告', self)
+        warnings_dock.setObjectName('warnings_dock')
+        self._warnings_panel = NameWarningsPanel()
+        warnings_dock.setWidget(self._warnings_panel)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, warnings_dock)
+        self.tabifyDockWidget(code_dock, warnings_dock)
+        code_dock.raise_()
 
         # 右侧：事件关联面板
         event_dock = QDockWidget('事件关联', self)
@@ -580,18 +592,33 @@ class MainWindow(QMainWindow):
         self._ws_folders_menu = ws_menu.addMenu('快速切换模组')
         ws_menu.aboutToShow.connect(self._update_ws_folders_menu)
 
-        # ---- 对齐 ----
-        align_menu = mb.addMenu('对齐(&L)')
-        align_menu.addAction('左对齐', lambda: self._align('left')).setShortcut(QKeySequence('Ctrl+Alt+1'))
-        align_menu.addAction('右对齐', lambda: self._align('right')).setShortcut(QKeySequence('Ctrl+Alt+2'))
-        align_menu.addAction('水平居中', lambda: self._align('hcenter')).setShortcut(QKeySequence('Ctrl+Alt+3'))
-        align_menu.addSeparator()
-        align_menu.addAction('顶部对齐', lambda: self._align('top')).setShortcut(QKeySequence('Ctrl+Alt+4'))
-        align_menu.addAction('底部对齐', lambda: self._align('bottom')).setShortcut(QKeySequence('Ctrl+Alt+5'))
-        align_menu.addAction('垂直居中', lambda: self._align('vcenter')).setShortcut(QKeySequence('Ctrl+Alt+6'))
-        align_menu.addSeparator()
-        align_menu.addAction('水平均匀分布', lambda: self._align('hdistrib'))
-        align_menu.addAction('垂直均匀分布', lambda: self._align('vdistrib'))
+        # ---- 排列 ----
+        arrange_menu = mb.addMenu('排列(&A)')
+        # 对齐
+        arrange_menu.addAction('左对齐', lambda: self._align('left')).setShortcut(QKeySequence('Ctrl+Alt+1'))
+        arrange_menu.addAction('右对齐', lambda: self._align('right')).setShortcut(QKeySequence('Ctrl+Alt+2'))
+        arrange_menu.addAction('水平居中', lambda: self._align('hcenter')).setShortcut(QKeySequence('Ctrl+Alt+3'))
+        arrange_menu.addAction('顶部对齐', lambda: self._align('top')).setShortcut(QKeySequence('Ctrl+Alt+4'))
+        arrange_menu.addAction('底部对齐', lambda: self._align('bottom')).setShortcut(QKeySequence('Ctrl+Alt+5'))
+        arrange_menu.addAction('垂直居中', lambda: self._align('vcenter')).setShortcut(QKeySequence('Ctrl+Alt+6'))
+        arrange_menu.addSeparator()
+        # 分布
+        arrange_menu.addAction('水平均匀分布', lambda: self._align('hdistrib'))
+        arrange_menu.addAction('垂直均匀分布', lambda: self._align('vdistrib'))
+        arrange_menu.addSeparator()
+        # 阵列
+        arrange_menu.addAction('线性阵列...', self._linear_array).setShortcut(QKeySequence('Ctrl+Shift+L'))
+        arrange_menu.addAction('圆形阵列...', self._circular_array).setShortcut(QKeySequence('Ctrl+Shift+O'))
+        arrange_menu.addSeparator()
+        # 镜像
+        arrange_menu.addAction('水平镜像', lambda: self._mirror('h'))
+        arrange_menu.addAction('垂直镜像', lambda: self._mirror('v'))
+        arrange_menu.addAction('镜像复制...', self._mirror_dialog)
+        arrange_menu.addSeparator()
+        # 尺寸
+        arrange_menu.addAction('相同宽度', lambda: self._canvas.gui_scene.make_same_size('width'))
+        arrange_menu.addAction('相同高度', lambda: self._canvas.gui_scene.make_same_size('height'))
+        arrange_menu.addAction('相同尺寸', lambda: self._canvas.gui_scene.make_same_size('both'))
 
         # ---- 工具 ----
         tools_menu = mb.addMenu('工具(&T)')
@@ -617,58 +644,67 @@ class MainWindow(QMainWindow):
         tb = self.addToolBar('主工具栏')
         tb.setMovable(False)
         tb.setIconSize(QSize(18, 18))
+        self._toolbar = tb
+        self._toolbar_icon_actions: list[tuple[QAction, str]] = []
 
-        def _add(label, cb, tip=''):
+        def _add(label, cb, tip='', icon_name=''):
             a = QAction(label, self)
+            if icon_name:
+                a.setIcon(IconProvider.themed_icon(icon_name, 18))
+                self._toolbar_icon_actions.append((a, icon_name))
             a.triggered.connect(cb)
             if tip:
                 a.setToolTip(tip)
             tb.addAction(a)
             return a
 
-        _add('新建', self._new_file, '新建 GUI 文件')
-        _add('打开', self._open_file, '打开 .gui 文件')
-        _add('保存', self._save, '保存 (Ctrl+S)')
+        _add('新建', self._new_file, '新建 GUI 文件', 'new-file')
+        _add('打开', self._open_file, '打开 .gui 文件', 'open-file')
+        _add('保存', self._save, '保存 (Ctrl+S)', 'save')
         tb.addSeparator()
 
-        self._tb_undo = _add('撤销', self._undo, '撤销 (Ctrl+Z)')
+        self._tb_undo = _add('撤销', self._undo, '撤销 (Ctrl+Z)', 'undo')
         self._tb_undo.setEnabled(False)
-        self._tb_redo = _add('重做', self._redo, '重做 (Ctrl+Y)')
+        self._tb_redo = _add('重做', self._redo, '重做 (Ctrl+Y)', 'redo')
         self._tb_redo.setEnabled(False)
         tb.addSeparator()
 
-        _add('适应画布', self._canvas.fit_to_canvas, '适应画布 (Ctrl+0)')
-        _add('放大+', self._canvas.zoom_in, '放大')
-        _add('缩小-', self._canvas.zoom_out, '缩小')
-        _add('居中', self._canvas.center_on_selected, '居中到选中 (Ctrl+F)')
+        _add('适应画布', self._canvas.fit_to_canvas, '适应画布 (Ctrl+0)', 'zoom-fit')
+        _add('放大+', self._canvas.zoom_in, '放大', 'zoom-in')
+        _add('缩小-', self._canvas.zoom_out, '缩小', 'zoom-out')
+        _add('居中', self._canvas.center_on_selected, '居中到选中 (Ctrl+F)', 'center-view')
         tb.addSeparator()
 
-        _add('复制控件', self._duplicate_widget, '复制控件 (Ctrl+D)')
-        _add('删除控件', self._delete_widget, '删除选中控件 (Del)')
+        _add('复制控件', self._duplicate_widget, '复制控件 (Ctrl+D)', 'duplicate')
+        _add('删除控件', self._delete_widget, '删除选中控件 (Del)', 'delete')
         tb.addSeparator()
 
-        _add('左对齐', lambda: self._align('left'), '左对齐')
-        _add('水平居中', lambda: self._align('hcenter'), '水平居中')
-        _add('右对齐', lambda: self._align('right'), '右对齐')
-        _add('顶对齐', lambda: self._align('top'), '顶部对齐')
-        _add('垂直居中', lambda: self._align('vcenter'), '垂直居中')
-        _add('底对齐', lambda: self._align('bottom'), '底部对齐')
+        _add('左对齐', lambda: self._align('left'), '左对齐', 'align-left')
+        _add('水平居中', lambda: self._align('hcenter'), '水平居中', 'align-h-center')
+        _add('右对齐', lambda: self._align('right'), '右对齐', 'align-right')
+        _add('顶对齐', lambda: self._align('top'), '顶部对齐', 'align-top')
+        _add('垂直居中', lambda: self._align('vcenter'), '垂直居中', 'align-v-center')
+        _add('底对齐', lambda: self._align('bottom'), '底部对齐', 'align-bottom')
         tb.addSeparator()
 
         self._tb_preview = QAction('预览模式', self)
         self._tb_preview.setCheckable(True)
+        self._tb_preview.setIcon(IconProvider.themed_icon('preview', 18))
+        self._toolbar_icon_actions.append((self._tb_preview, 'preview'))
         self._tb_preview.setToolTip('切换预览模式 (Ctrl+P)')
         self._tb_preview.triggered.connect(self._toggle_preview)
         tb.addAction(self._tb_preview)
         tb.addSeparator()
 
         # Refresh canvas button
-        _add('🔄 刷新画布', self._refresh_canvas, '强制刷新画布显示 (Ctrl+Shift+F5)')
+        _add('刷新画布', self._refresh_canvas, '强制刷新画布显示 (Ctrl+Shift+F5)',
+             'refresh')
 
         tb.addSeparator()
         # Language selector
-        lang_label = QLabel('  本地化: ')
-        lang_label.setStyleSheet('color:#aaa;')
+        self._lang_label = QLabel('  本地化: ')
+        lang_label = self._lang_label
+        lang_label.setStyleSheet(f'color:{ThemeManager.muted_color()};')
         tb.addWidget(lang_label)
         self._lang_combo = QComboBox()
         self._lang_combo.setMinimumWidth(120)
@@ -689,17 +725,26 @@ class MainWindow(QMainWindow):
         self._status.addPermanentWidget(self._zoom_label)
 
         # 常驻游戏/模组加载状态指示器
-        self._game_status_label = QLabel('○ 未配置游戏目录')
+        self._game_status_icon = QLabel()
+        self._game_status_icon.setPixmap(IconProvider.pixmap('circle-empty', 10, '#e74c3c'))
+        self._game_status_icon.setFixedSize(14, 14)
+        self._status.addPermanentWidget(self._game_status_icon)
+        self._game_status_label = QLabel('未配置游戏目录')
         self._game_status_label.setStyleSheet('color:#f39c12; font-size:9px; padding:0 6px;')
         self._game_status_label.setToolTip('游戏目录加载状态。前往 工具→设置 配置游戏目录。')
         self._status.addPermanentWidget(self._game_status_label)
 
+        self._mod_status_icon = QLabel()
+        self._mod_status_icon.setFixedSize(14, 14)
+        self._mod_status_icon.setVisible(False)
+        self._status.addPermanentWidget(self._mod_status_icon)
         self._mod_status_label = QLabel('')
         self._mod_status_label.setStyleSheet('color:#3498db; font-size:9px; padding:0 6px;')
         self._status.addPermanentWidget(self._mod_status_label)
 
         # 加载取消按钮（仅在资源加载期间显示）
-        self._cancel_load_btn = QPushButton('✕ 取消加载')
+        self._cancel_load_btn = QPushButton('取消加载')
+        self._cancel_load_btn.setIcon(QIcon(IconProvider.pixmap('close', 10, '#e74c3c')))
         self._cancel_load_btn.setFixedHeight(18)
         self._cancel_load_btn.setStyleSheet(
             'QPushButton { font-size:9px; padding:0 6px; color:#e74c3c;'
@@ -715,16 +760,22 @@ class MainWindow(QMainWindow):
     def _update_game_status_indicator(self):
         """更新状态栏中的游戏目录状态指示器。"""
         if self._rm.game_dir and self._rm.sprite_count > 0:
+            self._game_status_icon.setPixmap(
+                IconProvider.pixmap('circle-filled', 10, '#2ecc71'))
             self._game_status_label.setText(
-                f'● 游戏已加载 ({self._rm.sprite_count} 精灵图)')
+                f'游戏已加载 ({self._rm.sprite_count} 精灵图)')
             self._game_status_label.setStyleSheet(
                 'color:#2ecc71; font-size:9px; padding:0 6px;')
         elif self._rm.game_dir:
-            self._game_status_label.setText('● 游戏目录已配置')
+            self._game_status_icon.setPixmap(
+                IconProvider.pixmap('circle-filled', 10, '#f39c12'))
+            self._game_status_label.setText('游戏目录已配置')
             self._game_status_label.setStyleSheet(
                 'color:#f39c12; font-size:9px; padding:0 6px;')
         else:
-            self._game_status_label.setText('○ 未配置游戏目录')
+            self._game_status_icon.setPixmap(
+                IconProvider.pixmap('circle-empty', 10, '#e74c3c'))
+            self._game_status_label.setText('未配置游戏目录')
             self._game_status_label.setStyleSheet(
                 'color:#e74c3c; font-size:9px; padding:0 6px;')
 
@@ -732,9 +783,13 @@ class MainWindow(QMainWindow):
         """更新状态栏中的模组加载状态指示器。"""
         if self._mod_dir:
             mod_name = os.path.basename(self._mod_dir)
-            self._mod_status_label.setText(f'● 模组: {mod_name}')
+            self._mod_status_icon.setPixmap(
+                IconProvider.pixmap('circle-filled', 10, '#3498db'))
+            self._mod_status_icon.setVisible(True)
+            self._mod_status_label.setText(f'模组: {mod_name}')
             self._mod_status_label.setToolTip(self._mod_dir)
         else:
+            self._mod_status_icon.setVisible(False)
             self._mod_status_label.setText('')
 
     def _setup_connections(self):
@@ -763,6 +818,9 @@ class MainWindow(QMainWindow):
         # Virtual groups panel
         self._vgroup_panel.set_canvas(self._canvas)
         self._vgroup_panel.visibility_changed.connect(self._on_vgroup_visibility_changed)
+
+        # Name warnings panel
+        self._warnings_panel.set_canvas(self._canvas)
 
         # Event link panel
         self._event_panel.event_selected.connect(self._on_event_selected)
@@ -823,7 +881,9 @@ class MainWindow(QMainWindow):
                 act.setEnabled(enabled)
         self._cancel_load_btn.setVisible(loading)
         if loading:
-            self._game_status_label.setText('⟳ 资源加载中...')
+            self._game_status_icon.setPixmap(
+                IconProvider.pixmap('loading', 10, '#f39c12'))
+            self._game_status_label.setText('资源加载中...')
             self._game_status_label.setStyleSheet('color:#f39c12; font-size:9px; padding:0 6px;')
 
     def _cancel_loading(self):
@@ -1035,6 +1095,7 @@ class MainWindow(QMainWindow):
         else:
             self._vgroup_manager = VirtualGroupManager()
         self._vgroup_panel.set_doc(doc, self._vgroup_manager)
+        self._warnings_panel.set_doc(doc)
         fname = os.path.basename(doc.file_path) if doc.file_path else '未命名'
         self.setWindowTitle(f'群星 GUI 编辑器 — {fname}')
         self._props_panel.set_node(None)
@@ -1476,6 +1537,7 @@ class MainWindow(QMainWindow):
             fname = os.path.basename(self._current_doc.file_path or '未命名')
             self.setWindowTitle(f'群星 GUI 编辑器 — {fname} *')
         self._code_view.schedule_update()
+        self._warnings_panel.refresh()
         self._autosave_timer.start()
 
     def _assign_sprite(self, sprite_name: str):
@@ -1653,7 +1715,7 @@ class MainWindow(QMainWindow):
         lst = QListWidget()
         folders = self._settings.workspace_folders
         for wf in folders:
-            item = QListWidgetItem(f"{'✓' if wf.get('enabled', True) else '○'}  {wf.get('name', '')}  —  {wf.get('path', '')}")
+            item = QListWidgetItem(f"{'[ON]' if wf.get('enabled', True) else '[--]'}  {wf.get('name', '')}  —  {wf.get('path', '')}")
             item.setData(Qt.ItemDataRole.UserRole, wf.get('path', ''))
             lst.addItem(item)
         layout.addWidget(lst)
@@ -1704,6 +1766,40 @@ class MainWindow(QMainWindow):
 
     def _align(self, axis: str):
         self._canvas.gui_scene.align_selected(axis)
+
+    def _linear_array(self):
+        from .array_dialogs import LinearArrayDialog
+        dlg = LinearArrayDialog(self)
+        if dlg.exec():
+            self._canvas.gui_scene.linear_array_selected(
+                dlg.count, dlg.offset_x, dlg.offset_y)
+
+    def _circular_array(self):
+        from .array_dialogs import CircularArrayDialog
+        settings = AppSettings.instance()
+        cw, ch = settings.canvas_size
+        # 默认圆心 = 选中控件中心（on_ring 模式使用）；center 模式由 canvas 自行计算
+        sel = self._canvas.gui_scene._get_selected_pos_size()
+        if sel:
+            default_cx = sum((p[0] + s[0] / 2) for _, p, s in sel) / len(sel)
+            default_cy = sum((p[1] + s[1] / 2) for _, p, s in sel) / len(sel)
+        else:
+            default_cx, default_cy = cw / 2, ch / 2
+        dlg = CircularArrayDialog(default_cx, default_cy, self)
+        if dlg.exec():
+            self._canvas.gui_scene.circular_array_selected(
+                dlg.count, dlg.center_x, dlg.center_y, dlg.radius,
+                mode=dlg.mode)
+
+    def _mirror(self, axis: str):
+        self._canvas.gui_scene.mirror_selected(axis, copy=True)
+
+    def _mirror_dialog(self):
+        from .array_dialogs import MirrorDialog
+        dlg = MirrorDialog(self)
+        if dlg.exec():
+            self._canvas.gui_scene.mirror_selected(
+                dlg.axis, copy=dlg.copy_mode)
 
     def _toggle_grid(self):
         self._settings.show_grid = self._act_grid.isChecked()
@@ -1774,6 +1870,7 @@ class MainWindow(QMainWindow):
             )
             self._canvas.update_theme()
             self._code_view.update_theme(self._settings.theme)
+            self._refresh_theme_icons()
 
             game_dir = self._settings.game_dir
             if game_dir != self._rm.game_dir:
@@ -1786,6 +1883,14 @@ class MainWindow(QMainWindow):
             self._act_grid.setChecked(self._settings.show_grid)
             self._act_snap.setChecked(self._settings.snap_to_grid)
             self._canvas.gui_scene.update()
+
+    def _refresh_theme_icons(self):
+        """主题切换后刷新所有静态设置的图标和主题色标签。"""
+        for action, icon_name in self._toolbar_icon_actions:
+            action.setIcon(IconProvider.themed_icon(icon_name, 18))
+        self._lang_label.setStyleSheet(f'color:{ThemeManager.muted_color()};')
+        self._layer_panel.refresh_icons()
+        self._vgroup_panel.refresh_icons()
 
     def _validate_gui(self):
         """Validate the current GUI document for common issues."""
@@ -1827,7 +1932,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(btns)
             dlg.exec()
         else:
-            QMessageBox.information(self, 'GUI 验证', '✓ 未发现问题！')
+            QMessageBox.information(self, 'GUI 验证', '未发现问题！')
 
     def _open_be_editor(self):
         """Show the Button Effects editor dock and populate from current mod."""

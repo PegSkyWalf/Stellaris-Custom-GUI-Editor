@@ -29,6 +29,7 @@ from ..core.gui_model import (
     WIDGET_LABELS, WIDGET_COLORS,
 )
 from ..core.resource_manager import ResourceManager
+from ..core.theme_manager import ThemeManager
 
 
 class SpriteSelector(QWidget):
@@ -150,7 +151,7 @@ class PropertiesPanel(QWidget):
     def _build_identity_section(self):
         self._id_group, form = self._make_group('基本信息')
         self._type_label = QLabel('')
-        self._type_label.setStyleSheet('color: #888; font-size: 9px;')
+        self._type_label.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         form.addRow('控件类型:', self._type_label)
 
         self._name_edit = QLineEdit()
@@ -177,7 +178,7 @@ class PropertiesPanel(QWidget):
         # Placeholder when no size property defined
         self._no_size_row = QHBoxLayout()
         self._no_size_label = QLabel('-')
-        self._no_size_label.setStyleSheet('color: #7ec8e3; font-size: 11px; font-weight: bold;')
+        self._no_size_label.setStyleSheet(f'color: {ThemeManager.accent_color()}; font-size: 11px; font-weight: bold;')
         self._no_size_row.addWidget(self._no_size_label)
         self._create_size_btn = QPushButton('创建 size 属性')
         self._create_size_btn.setFixedHeight(20)
@@ -193,12 +194,12 @@ class PropertiesPanel(QWidget):
 
         self._size_placeholder_label = QLabel()
         self._size_placeholder_label.setWordWrap(True)
-        self._size_placeholder_label.setStyleSheet('color: #7ec8e3; font-size: 9px;')
+        self._size_placeholder_label.setStyleSheet(f'color: {ThemeManager.accent_color()}; font-size: 9px;')
         self._size_placeholder_label.setVisible(False)
         form.addRow('', self._size_placeholder_label)
 
         # Size note for spriteType
-        self._size_note = QLabel('⚠ spriteType 控件的大小由精灵图决定,\n请用 scale 属性调整显示尺寸。')
+        self._size_note = QLabel('[!] spriteType 控件的大小由精灵图决定,\n请用 scale 属性调整显示尺寸。')
         self._size_note.setStyleSheet('color: #f39c12; font-size: 8px;')
         self._size_note.setWordWrap(True)
         form.addRow('', self._size_note)
@@ -221,7 +222,7 @@ class PropertiesPanel(QWidget):
             'orientation: 锚点在父元素中的位置\n'
             'origo: 本控件的哪个点对齐到锚点'
         )
-        note.setStyleSheet('color: #888; font-size: 8px;')
+        note.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 8px;')
         form.addRow('', note)
 
         self._moveable_cb = QCheckBox('可移动')
@@ -238,7 +239,7 @@ class PropertiesPanel(QWidget):
         form.addRow('spriteType:', self._sprite_sel)
 
         sprite_note = QLabel('固定尺寸精灵 (大小由图片决定)')
-        sprite_note.setStyleSheet('color: #888; font-size: 8px;')
+        sprite_note.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 8px;')
         form.addRow('', sprite_note)
 
         self._quad_sel = SpriteSelector()
@@ -246,7 +247,7 @@ class PropertiesPanel(QWidget):
         form.addRow('quadTextureSprite:', self._quad_sel)
 
         quad_note = QLabel('可拉伸精灵 (大小由 size 属性决定)')
-        quad_note.setStyleSheet('color: #888; font-size: 8px;')
+        quad_note.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 8px;')
         form.addRow('', quad_note)
 
         self._scale_spin = QDoubleSpinBox()
@@ -272,7 +273,7 @@ class PropertiesPanel(QWidget):
         form.addRow('buttonText:', self._button_text_edit)
 
         self._loc_preview = QLabel()
-        self._loc_preview.setStyleSheet('color: #7ec8e3; font-size: 9px;')
+        self._loc_preview.setStyleSheet(f'color: {ThemeManager.accent_color()}; font-size: 9px;')
         self._loc_preview.setWordWrap(True)
         form.addRow('→ 本地化文本:', self._loc_preview)
 
@@ -340,7 +341,7 @@ class PropertiesPanel(QWidget):
         form.addRow('悬浮提示键 (tooltipText):', self._tooltip_text_edit)
 
         self._tooltip_loc_preview = QLabel()
-        self._tooltip_loc_preview.setStyleSheet('color: #7ec8e3; font-size: 9px;')
+        self._tooltip_loc_preview.setStyleSheet(f'color: {ThemeManager.accent_color()}; font-size: 9px;')
         self._tooltip_loc_preview.setWordWrap(True)
         form.addRow('→ 提示本地化:', self._tooltip_loc_preview)
 
@@ -365,7 +366,7 @@ class PropertiesPanel(QWidget):
             'background 是 containerWindowType 的可选子块，\n'
             '使用 quadTextureSprite 填充整个容器。'
         )
-        bg_note.setStyleSheet('color: #888; font-size: 8px;')
+        bg_note.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 8px;')
         bg_note.setWordWrap(True)
         form.addRow('', bg_note)
 
@@ -419,7 +420,7 @@ class PropertiesPanel(QWidget):
 
         note = QLabel('显示并编辑所有"未被上方表单覆盖"的属性键值对。\n'
                       '可添加自定义属性或修改不常见属性，修改立即生效。')
-        note.setStyleSheet('color:#888; font-size:8px;')
+        note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:8px;')
         note.setWordWrap(True)
         raw_layout.addWidget(note)
 
@@ -537,7 +538,7 @@ class PropertiesPanel(QWidget):
         lay.addWidget(key_lbl)
 
         info_lbl = QLabel(f'[复杂类型]  {val[:40]}{"..." if len(val)>40 else ""}')
-        info_lbl.setStyleSheet('color:#888; font-size:9px;')
+        info_lbl.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         info_lbl.setToolTip(val)
         lay.addWidget(info_lbl, 1)
         return w
@@ -653,7 +654,7 @@ class PropertiesPanel(QWidget):
                 self._size_editor.set_value(w, h)
                 self._size_editor.setEnabled(not is_sprite)
                 if is_sprite:
-                    self._size_note.setText('⚠ spriteType 控件的大小由精灵图决定，\n请用 scale 属性调整显示尺寸。')
+                    self._size_note.setText('[!] spriteType 控件的大小由精灵图决定，\n请用 scale 属性调整显示尺寸。')
                     self._size_note.setVisible(True)
                 else:
                     self._size_note.setVisible(False)
@@ -805,7 +806,7 @@ class PropertiesPanel(QWidget):
         if doc is not None and value:
             dups = [w for w in doc.all_widgets() if w.name == value and w is not self._node]
             if dups:
-                self._name_dup_label.setText(f'⚠ 名称重复（已有 {len(dups)} 个同名控件）')
+                self._name_dup_label.setText(f'[!] 名称重复（已有 {len(dups)} 个同名控件）')
                 self._name_dup_label.show()
                 self._name_edit.setStyleSheet('border: 1px solid #e74c3c;')
                 return
