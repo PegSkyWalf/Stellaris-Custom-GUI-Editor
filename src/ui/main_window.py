@@ -14,7 +14,12 @@
 from __future__ import annotations
 import os
 import copy
+import threading
+import time
 from typing import Optional, List, Tuple
+
+from ..core.logger import get_logger
+_log = get_logger('main_window')
 
 from PySide6.QtWidgets import (
     QMainWindow, QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
@@ -55,7 +60,8 @@ from ..core.theme_manager import ThemeManager
 
 class _GuiLoadThread(QThread):
     """Background thread for loading large .gui files without blocking the UI."""
-    finished = Signal(object)   # GUIDocument
+    # NOTE: named load_finished (not finished) to avoid collision with QThread.finished
+    load_finished = Signal(object)   # GUIDocument
     error = Signal(str)
 
     def __init__(self, path: str, parent=None):
@@ -66,7 +72,7 @@ class _GuiLoadThread(QThread):
         try:
             from ..core.gui_model import parse_gui_file
             doc = parse_gui_file(self._path)
-            self.finished.emit(doc)
+            self.load_finished.emit(doc)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -74,7 +80,10 @@ class _GuiLoadThread(QThread):
 class _ResourceLoaderThread(QThread):
     """Background thread for loading game/mod resources without freezing the UI."""
     progress = Signal(str)   # status message
-    finished = Signal()
+    # NOTE: named load_finished (not finished) to avoid collision with QThread's
+    # built-in C++ finished signal, which would cause the slot to fire twice.
+    load_finished = Signal()
+    cancelled = Signal()
     error = Signal(str)
 
     def __init__(self, rm: 'ResourceManager', game_dir: str,
@@ -84,21 +93,50 @@ class _ResourceLoaderThread(QThread):
         self._game_dir = game_dir
         self._mod_dir = mod_dir
         self._extra_dirs = extra_dirs
+        self._cancel_event = threading.Event()
+
+    def cancel(self):
+        """Request cancellation. The thread will stop at the next checkpoint."""
+        self._cancel_event.set()
 
     def run(self):
+        t_start = time.monotonic()
+        _log.info("资源加载线程启动: game=%s  mod=%s  extra=%s",
+                  self._game_dir or '(无)', self._mod_dir or '(无)',
+                  [os.path.basename(d) for d in self._extra_dirs])
         try:
             if self._game_dir:
                 self.progress.emit(f'正在加载原版资源: {self._game_dir} ...')
-                self._rm.load_game_dir(self._game_dir)
+                t = time.monotonic()
+                self._rm.load_game_dir(self._game_dir, self._cancel_event)
+                _log.info("游戏目录加载耗时 %.2fs", time.monotonic() - t)
+            if self._cancel_event.is_set():
+                _log.info("加载线程：game_dir 后取消，总耗时 %.2fs", time.monotonic() - t_start)
+                self.cancelled.emit()
+                return
             if self._mod_dir and os.path.isdir(self._mod_dir):
                 self.progress.emit(f'正在加载模组: {os.path.basename(self._mod_dir)} ...')
-                self._rm.load_mod_dir(self._mod_dir)
+                t = time.monotonic()
+                self._rm.load_mod_dir(self._mod_dir, self._cancel_event)
+                _log.info("模组目录加载耗时 %.2fs", time.monotonic() - t)
+            if self._cancel_event.is_set():
+                _log.info("加载线程：mod_dir 后取消，总耗时 %.2fs", time.monotonic() - t_start)
+                self.cancelled.emit()
+                return
             for extra in self._extra_dirs:
+                if self._cancel_event.is_set():
+                    _log.info("加载线程：extra_dirs 中取消，总耗时 %.2fs", time.monotonic() - t_start)
+                    self.cancelled.emit()
+                    return
                 if os.path.isdir(extra):
                     self.progress.emit(f'正在加载额外目录: {os.path.basename(extra)} ...')
-                    self._rm.load_extra_mod_dir(extra)
-            self.finished.emit()
+                    t = time.monotonic()
+                    self._rm.load_extra_mod_dir(extra, self._cancel_event)
+                    _log.info("额外目录 %s 加载耗时 %.2fs", os.path.basename(extra), time.monotonic() - t)
+            _log.info("资源加载线程完成，总耗时 %.2fs", time.monotonic() - t_start)
+            self.load_finished.emit()
         except Exception as e:
+            _log.exception("资源加载线程异常: %s", e)
             self.error.emit(str(e))
 
 
@@ -660,6 +698,18 @@ class MainWindow(QMainWindow):
         self._mod_status_label.setStyleSheet('color:#3498db; font-size:9px; padding:0 6px;')
         self._status.addPermanentWidget(self._mod_status_label)
 
+        # 加载取消按钮（仅在资源加载期间显示）
+        self._cancel_load_btn = QPushButton('✕ 取消加载')
+        self._cancel_load_btn.setFixedHeight(18)
+        self._cancel_load_btn.setStyleSheet(
+            'QPushButton { font-size:9px; padding:0 6px; color:#e74c3c;'
+            ' background:transparent; border:1px solid #e74c3c; border-radius:2px; }'
+            'QPushButton:hover { background:#e74c3c; color:#fff; }'
+        )
+        self._cancel_load_btn.setVisible(False)
+        self._cancel_load_btn.clicked.connect(self._cancel_loading)
+        self._status.addPermanentWidget(self._cancel_load_btn)
+
         self._status.showMessage('就绪。请打开模组目录或 .gui 文件开始编辑。')
 
     def _update_game_status_indicator(self):
@@ -751,6 +801,7 @@ class MainWindow(QMainWindow):
         self._set_loading_state(True)
         self._status.showMessage('正在后台加载资源，请稍候...')
 
+        self._cancel_load_btn.setEnabled(True)
         self._res_loader = _ResourceLoaderThread(
             self._rm, game_dir,
             last_mod if (last_mod and os.path.isdir(last_mod)) else '',
@@ -758,7 +809,8 @@ class MainWindow(QMainWindow):
             self,
         )
         self._res_loader.progress.connect(self._status.showMessage)
-        self._res_loader.finished.connect(self._on_resources_loaded)
+        self._res_loader.load_finished.connect(self._on_resources_loaded)
+        self._res_loader.cancelled.connect(self._on_loading_cancelled)
         self._res_loader.error.connect(self._on_resources_error)
         self._res_loader.start()
 
@@ -769,9 +821,20 @@ class MainWindow(QMainWindow):
                     self._act_save_as, self._act_load_mod):
             if act is not None:
                 act.setEnabled(enabled)
+        self._cancel_load_btn.setVisible(loading)
         if loading:
             self._game_status_label.setText('⟳ 资源加载中...')
             self._game_status_label.setStyleSheet('color:#f39c12; font-size:9px; padding:0 6px;')
+
+    def _cancel_loading(self):
+        """取消当前正在进行的资源加载。"""
+        if self._res_loader and self._res_loader.isRunning():
+            _log.info("用户点击取消加载")
+            self._res_loader.cancel()
+            self._status.showMessage('正在取消加载，请稍候...')
+            self._cancel_load_btn.setEnabled(False)
+        else:
+            _log.warning("取消加载：加载线程不在运行状态")
 
     def _on_resources_loaded(self):
         """Called on the GUI thread when _ResourceLoaderThread finishes."""
@@ -779,14 +842,20 @@ class MainWindow(QMainWindow):
         game_dir = self._settings.game_dir
         last_mod = self._mod_dir
 
+        _log.info("主线程：开始更新 UI（精灵图库 + 文件浏览器）...")
+        t = time.monotonic()
         self._sprite_lib.populate()
+        _log.debug("精灵图库更新耗时 %.2fs", time.monotonic() - t)
+        t = time.monotonic()
         self._file_browser.set_directories(game_dir or '', last_mod or '')
+        _log.debug("文件浏览器更新耗时 %.2fs", time.monotonic() - t)
         if last_mod:
             self._be_editor.set_mod_dir(last_mod)
 
         self._status.showMessage(
             f'已加载 {self._rm.sprite_count} 个精灵图，{self._rm.loc_count} 条本地化。'
         )
+        _log.info("资源加载完成: %d 精灵图 / %d 本地化", self._rm.sprite_count, self._rm.loc_count)
         self._update_game_status_indicator()
         self._update_mod_status_indicator()
 
@@ -794,6 +863,18 @@ class MainWindow(QMainWindow):
         """Called on the GUI thread when _ResourceLoaderThread encounters an error."""
         self._set_loading_state(False)
         self._status.showMessage(f'资源加载出错: {msg}')
+        self._update_game_status_indicator()
+        self._update_mod_status_indicator()
+
+    def _on_loading_cancelled(self):
+        """Called on the GUI thread when the user cancels loading."""
+        _log.info("资源加载已取消（主线程回调）")
+        self._set_loading_state(False)
+        self._cancel_load_btn.setEnabled(True)
+        # 清除 last_mod_dir，避免下次启动再次自动加载被取消的模组
+        self._settings.last_mod_dir = ''
+        self._mod_dir = ''
+        self._status.showMessage('已取消加载。资源仅部分加载，精灵图和本地化数据可能不完整。')
         self._update_game_status_indicator()
         self._update_mod_status_indicator()
 
@@ -863,7 +944,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, '_load_thread'):
                 self._load_thread.quit()
 
-        self._load_thread.finished.connect(on_finished)
+        self._load_thread.load_finished.connect(on_finished)
         self._load_thread.error.connect(on_error)
         progress.canceled.connect(on_cancelled)
         self._load_thread.start()
@@ -889,8 +970,9 @@ class MainWindow(QMainWindow):
     def _load_mod_dir(self, path: str):
         """Load a mod directory in a background thread (non-blocking)."""
         self._mod_dir = path
+        # 注意：仅在加载成功后（_on_mod_loaded）才写入 last_mod_dir
+        # 避免因卡死/取消导致下次启动仍自动加载同一问题目录
         self._settings.add_recent_mod_dir(path)
-        self._settings.last_mod_dir = path
         self._settings.set('last_open_dir', path)
 
         extra_dirs: List[str] = list(self._settings.extra_mod_dirs or [])
@@ -900,6 +982,7 @@ class MainWindow(QMainWindow):
                 extra_dirs.append(p)
 
         self._set_loading_state(True)
+        self._cancel_load_btn.setEnabled(True)
         self._status.showMessage(f'正在后台加载模组: {os.path.basename(path)} ...')
 
         self._res_loader = _ResourceLoaderThread(
@@ -907,7 +990,8 @@ class MainWindow(QMainWindow):
             path, extra_dirs, self,
         )
         self._res_loader.progress.connect(self._status.showMessage)
-        self._res_loader.finished.connect(self._on_mod_loaded)
+        self._res_loader.load_finished.connect(self._on_mod_loaded)
+        self._res_loader.cancelled.connect(self._on_loading_cancelled)
         self._res_loader.error.connect(self._on_resources_error)
         self._res_loader.start()
 
@@ -916,14 +1000,24 @@ class MainWindow(QMainWindow):
         self._set_loading_state(False)
         game_dir = self._settings.game_dir
         path = self._mod_dir
+        # 加载成功，现在才持久化 last_mod_dir
+        self._settings.last_mod_dir = path
+
+        _log.info("主线程：模组加载后更新 UI: %s", path)
+        t = time.monotonic()
         self._sprite_lib.populate()
+        _log.debug("精灵图库更新耗时 %.2fs", time.monotonic() - t)
+        t = time.monotonic()
         self._file_browser.set_directories(game_dir, path)
+        _log.debug("文件浏览器更新耗时 %.2fs", time.monotonic() - t)
         self._be_editor.set_mod_dir(path)
         self._update_language_combo()
         self._status.showMessage(
             f'模组已加载: {os.path.basename(path)}  '
             f'({self._rm.sprite_count} 精灵图 / {self._rm.loc_count} 本地化)'
         )
+        _log.info("模组加载完成: %s — %d 精灵图 / %d 本地化", path,
+                  self._rm.sprite_count, self._rm.loc_count)
         self._update_mod_status_indicator()
         self._update_game_status_indicator()
 

@@ -11,8 +11,13 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
+
+from .logger import get_logger
+_log = get_logger('resource_manager')
 
 from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtCore import QRect
@@ -92,6 +97,8 @@ class ResourceManager:
         self._room_file_cache: Dict[str, str] = {}
         # Cached scaled pixmaps for £text_icon£ previews (key → QPixmap)
         self._text_icon_pixmap_cache: Dict[str, 'QPixmap'] = {}
+        # Track which dirs have already been event-scanned (lazy scan support)
+        self._events_scanned_dirs: Set[str] = set()
 
     @classmethod
     def instance(cls) -> 'ResourceManager':
@@ -103,76 +110,204 @@ class ResourceManager:
     # Loading
     # ------------------------------------------------------------------
 
-    def load_game_dir(self, game_dir: str):
+    def load_game_dir(self, game_dir: str, cancel_event: Optional[threading.Event] = None):
+        _log.info("开始加载游戏目录: %s", game_dir)
+        t0 = time.monotonic()
         self.game_dir = game_dir
         if not os.path.isdir(game_dir):
+            _log.warning("游戏目录不存在: %s", game_dir)
             return
         iface_dir = os.path.join(game_dir, 'interface')
         if os.path.isdir(iface_dir):
-            self._index_interface_dir(iface_dir, priority=0)
-        self._index_gfx_directory(game_dir, priority=0)
+            self._index_interface_dir(iface_dir, priority=0, cancel_event=cancel_event)
+        if cancel_event and cancel_event.is_set():
+            _log.info("load_game_dir: 在 interface 扫描后收到取消信号")
+            return
+        self._index_gfx_directory(game_dir, priority=0, cancel_event=cancel_event)
+        if cancel_event and cancel_event.is_set():
+            _log.info("load_game_dir: 在 gfx 扫描后收到取消信号")
+            return
         loc_dir = os.path.join(game_dir, 'localisation')
         if os.path.isdir(loc_dir):
-            self._load_localisation_dir(loc_dir)
-        self._scan_events([game_dir])
+            self._load_localisation_dir(loc_dir, cancel_event=cancel_event)
+        # 事件扫描已改为懒加载，不在此处调用 _scan_events
+        _log.info("游戏目录加载完成: %d 精灵图 / %d 本地化词条，耗时 %.2fs",
+                  len(self._sprites), len(self._loc), time.monotonic() - t0)
 
-    def load_mod_dir(self, mod_dir: str):
+    def load_mod_dir(self, mod_dir: str, cancel_event: Optional[threading.Event] = None):
+        _log.info("开始加载模组目录: %s", mod_dir)
+        t0 = time.monotonic()
         self.mod_dir = mod_dir
         if not os.path.isdir(mod_dir):
+            _log.warning("模组目录不存在: %s", mod_dir)
             return
         iface_dir = os.path.join(mod_dir, 'interface')
         if os.path.isdir(iface_dir):
-            self._index_interface_dir(iface_dir, priority=1)
-        self._index_gfx_directory(mod_dir, priority=1)
+            self._index_interface_dir(iface_dir, priority=1, cancel_event=cancel_event)
+        if cancel_event and cancel_event.is_set():
+            _log.info("load_mod_dir: 在 interface 扫描后收到取消信号")
+            return
+        self._index_gfx_directory(mod_dir, priority=1, cancel_event=cancel_event)
+        if cancel_event and cancel_event.is_set():
+            _log.info("load_mod_dir: 在 gfx 扫描后收到取消信号")
+            return
         loc_dir = os.path.join(mod_dir, 'localisation')
         if os.path.isdir(loc_dir):
-            self._load_localisation_dir(loc_dir)
-        self._scan_events([mod_dir])
+            self._load_localisation_dir(loc_dir, cancel_event=cancel_event)
+        if cancel_event and cancel_event.is_set():
+            _log.info("load_mod_dir: 在 localisation 扫描后收到取消信号")
+            return
         self._detect_available_languages(mod_dir)
+        # 事件扫描已改为懒加载，不在此处调用 _scan_events
+        _log.info("模组目录加载完成: %d 精灵图 / %d 本地化词条，耗时 %.2fs",
+                  len(self._sprites), len(self._loc), time.monotonic() - t0)
 
-    def load_extra_mod_dir(self, extra_mod_dir: str):
+    def load_extra_mod_dir(self, extra_mod_dir: str, cancel_event: Optional[threading.Event] = None):
         """
         Load an additional dependency mod for texture/sprite resolution.
         Priority 0.5 — higher than vanilla, lower than the primary mod.
         """
+        _log.info("开始加载额外模组目录: %s", extra_mod_dir)
+        t0 = time.monotonic()
         if not os.path.isdir(extra_mod_dir):
+            _log.warning("额外模组目录不存在: %s", extra_mod_dir)
             return
         if extra_mod_dir not in self._extra_mod_dirs:
             self._extra_mod_dirs.append(extra_mod_dir)
         prio = max(0, len(self._extra_mod_dirs) - 1)
         iface_dir = os.path.join(extra_mod_dir, 'interface')
         if os.path.isdir(iface_dir):
-            self._index_interface_dir(iface_dir, priority=prio)
-        self._index_gfx_directory(extra_mod_dir, priority=prio)
+            self._index_interface_dir(iface_dir, priority=prio, cancel_event=cancel_event)
+        if cancel_event and cancel_event.is_set():
+            return
+        self._index_gfx_directory(extra_mod_dir, priority=prio, cancel_event=cancel_event)
+        if cancel_event and cancel_event.is_set():
+            return
         loc_dir = os.path.join(extra_mod_dir, 'localisation')
         if os.path.isdir(loc_dir):
-            self._load_localisation_dir(loc_dir)
-        self._scan_events([extra_mod_dir])
+            self._load_localisation_dir(loc_dir, cancel_event=cancel_event)
+        # 事件扫描已改为懒加载，不在此处调用 _scan_events
+        _log.info("额外模组目录加载完成，耗时 %.2fs", time.monotonic() - t0)
 
-    def _index_interface_dir(self, iface_dir: str, priority: int):
-        for root, dirs, files in os.walk(iface_dir):
+    @staticmethod
+    def _safe_walk(top: str):
+        """
+        os.walk 的安全包装：检测 Windows 目录联接点（junction）导致的循环引用。
+        通过对比 st_dev + st_ino 避免重复访问同一物理目录。
+        """
+        seen: Set[tuple] = set()
+        for dirpath, dirnames, filenames in os.walk(top):
+            try:
+                s = os.stat(dirpath)
+                key = (s.st_dev, s.st_ino)
+            except OSError:
+                key = None
+            if key is not None:
+                if key in seen:
+                    _log.warning("检测到循环目录引用（联接点？），跳过: %s", dirpath)
+                    dirnames[:] = []  # 阻止 os.walk 继续下降
+                    continue
+                seen.add(key)
+            yield dirpath, dirnames, filenames
+
+    def _index_interface_dir(self, iface_dir: str, priority: int,
+                             cancel_event: Optional[threading.Event] = None):
+        t0 = time.monotonic()
+        gui_count = gfx_count = 0
+        _log.debug("扫描 interface 目录: %s", iface_dir)
+        for dirpath, dirs, files in self._safe_walk(iface_dir):
+            if cancel_event and cancel_event.is_set():
+                _log.debug("_index_interface_dir: 收到取消信号，当前目录 %s", dirpath)
+                return
+            _log.debug("  进入子目录: %s (%d 个文件)", dirpath, len(files))
             for fname in files:
-                fpath = os.path.join(root, fname)
+                if cancel_event and cancel_event.is_set():
+                    _log.debug("_index_interface_dir: 文件循环中收到取消信号")
+                    return
+                fpath = os.path.join(dirpath, fname)
                 ext = os.path.splitext(fname)[1].lower()
                 if ext in ('.gui', '.guicore'):
                     self._gui_files[fname] = fpath
+                    gui_count += 1
                 elif ext in ('.gfx', '.gfxcore'):
+                    _log.debug("    解析 GFX: %s", fname)
+                    tf = time.monotonic()
                     self._gfx_files[fname] = fpath
                     self._parse_gfx_file(fpath, priority)
+                    elapsed = time.monotonic() - tf
+                    if elapsed > 1.0:
+                        _log.warning("GFX 解析耗时过长 %.2fs: %s", elapsed, fpath)
+                    gfx_count += 1
+        _log.debug("interface 扫描完成: %d .gui, %d .gfx，耗时 %.3fs",
+                   gui_count, gfx_count, time.monotonic() - t0)
 
-    def _index_gfx_directory(self, root: str, priority: int):
-        """Walk gfx/ for .gfx files so text icons and sprites work when defined outside interface/."""
+    # Subdirectories under gfx/ that never contain spriteType / corneredTileSpriteType
+    # definitions — only 3D models, map data, fonts, etc.  Skipping them avoids
+    # hanging on large mesh .gfx files (e.g. protoss_01 with 226 files / multi-MB).
+    _GFX_SKIP_SUBDIRS = frozenset({
+        'models', 'fonts', 'loadingscreens', 'particles',
+        'portraits',   # portrait definitions, not sprite types
+        'map',         # map assets
+        'holosphere',  # 3D holosphere assets
+        'brushes',
+        'lasers',
+        'projectiles',
+        'shields',
+        'ships',       # 3D ship assets at root gfx/ships level
+        'galaxy',
+        'lights',
+    })
+    _GFX_MAX_FILE_BYTES = 512 * 1024   # 512 KB — sprite defs are never this large
+
+    def _index_gfx_directory(self, root: str, priority: int,
+                             cancel_event: Optional[threading.Event] = None):
+        """Walk gfx/ for .gfx files so text icons and sprites work when defined outside interface/.
+        Skips gfx/models/ and similar directories that only contain 3D mesh definitions."""
         gfx_root = os.path.join(root, 'gfx')
         if not os.path.isdir(gfx_root):
             return
-        for dirpath, _, files in os.walk(gfx_root):
+        t0 = time.monotonic()
+        gfx_count = dir_count = skip_count = 0
+        _log.debug("扫描 gfx 目录: %s", gfx_root)
+        for dirpath, dirs, files in self._safe_walk(gfx_root):
+            if cancel_event and cancel_event.is_set():
+                _log.debug("_index_gfx_directory: 收到取消信号，当前目录 %s", dirpath)
+                return
+            # Prune subdirectories that never contain sprite type definitions to
+            # prevent walking large 3D-model trees that can freeze the parser.
+            dirs[:] = [
+                d for d in dirs
+                if d.lower() not in self._GFX_SKIP_SUBDIRS
+            ]
+            dir_count += 1
+            _log.debug("  gfx 子目录 #%d: %s (%d 个文件)", dir_count, dirpath, len(files))
             for fname in files:
+                if cancel_event and cancel_event.is_set():
+                    _log.debug("_index_gfx_directory: 文件循环中收到取消信号")
+                    return
                 ext = os.path.splitext(fname)[1].lower()
                 if ext not in ('.gfx', '.gfxcore'):
                     continue
                 fpath = os.path.join(dirpath, fname)
+                # Skip files that are too large to be sprite definitions
+                try:
+                    fsize = os.path.getsize(fpath)
+                except OSError:
+                    fsize = 0
+                if fsize > self._GFX_MAX_FILE_BYTES:
+                    _log.debug("    跳过过大的 GFX 文件 (%.0f KB): %s", fsize / 1024, fname)
+                    skip_count += 1
+                    continue
+                _log.debug("    解析 GFX: %s", fname)
+                tf = time.monotonic()
                 self._gfx_files[fpath] = fpath
                 self._parse_gfx_file(fpath, priority)
+                elapsed = time.monotonic() - tf
+                if elapsed > 1.0:
+                    _log.warning("GFX 解析耗时过长 %.2fs: %s", elapsed, fpath)
+                gfx_count += 1
+        _log.debug("gfx 扫描完成: 遍历 %d 个目录，解析 %d 个 .gfx（跳过 %d 个过大文件），耗时 %.3fs",
+                   dir_count, gfx_count, skip_count, time.monotonic() - t0)
 
     _SPRITE_BLOCK_KEYS_CANONICAL = (
         'spriteType', 'corneredTileSpriteType', 'textSpriteType',
@@ -189,9 +324,14 @@ class ResourceManager:
     def _parse_gfx_file(self, gfx_path: str, priority: int):
         try:
             pairs = parse_file(gfx_path)
-        except Exception:
+        except Exception as e:
+            _log.warning("解析 GFX 文件失败: %s — %s", gfx_path, e)
             return
+        before = len(self._sprites)
         self._register_sprites_from_gfx_pairs(pairs, priority)
+        added = len(self._sprites) - before
+        if added:
+            _log.debug("    %s: 注册 %d 个精灵图", os.path.basename(gfx_path), added)
 
     def _register_sprites_from_gfx_pairs(self, pairs: list, priority: int):
         """Register sprite* blocks: spriteTypes = { ... }, or top-level spriteType = { ... }."""
@@ -246,23 +386,43 @@ class ResourceManager:
         info._priority = priority
         self._sprites[name] = info
 
-    def _load_localisation_dir(self, loc_dir: str):
+    def _load_localisation_dir(self, loc_dir: str,
+                               cancel_event: Optional[threading.Event] = None):
         """
         Scan the entire localisation directory tree for .yml files.
         Handles any subdirectory structure (including language prefixes like
         'english', 'l_english', 'simp_chinese', 'l_simp_chinese', etc.).
         Also loads files directly in loc_dir without a language subfolder.
         """
+        t0 = time.monotonic()
+        file_count = 0
+        _log.debug("扫描本地化目录: %s", loc_dir)
         seen: set = set()
-        for root, dirs, files in os.walk(loc_dir):
+        for root, dirs, files in self._safe_walk(loc_dir):
+            if cancel_event and cancel_event.is_set():
+                _log.debug("_load_localisation_dir: 收到取消信号，当前目录 %s", root)
+                break
             for fname in files:
+                if cancel_event and cancel_event.is_set():
+                    _log.debug("_load_localisation_dir: 文件循环中收到取消信号")
+                    break
                 if fname.lower().endswith(('.yml', '.ymlcore')):
                     fpath = os.path.join(root, fname)
                     if fpath not in seen:
                         seen.add(fpath)
+                        _log.debug("  解析本地化文件: %s", fname)
+                        tf = time.monotonic()
                         self._parse_loc_file(fpath)
+                        elapsed = time.monotonic() - tf
+                        if elapsed > 1.0:
+                            _log.warning("本地化文件解析耗时过长 %.2fs: %s", elapsed, fpath)
+                        file_count += 1
         # Flat _loc must match _loc_by_lang (active language + fallbacks)
+        _log.debug("本地化文件扫描完成: %d 个文件，耗时 %.3fs，开始重建词条索引...",
+                   file_count, time.monotonic() - t0)
+        t1 = time.monotonic()
         self._rebuild_loc()
+        _log.debug("词条索引重建完成: %d 条词条，重建耗时 %.3fs", len(self._loc), time.monotonic() - t1)
 
     def _load_localisation(self, loc_dir: str, lang: str):
         """Legacy method kept for compatibility — routes to _load_localisation_dir."""
@@ -317,7 +477,9 @@ class ResourceManager:
             try:
                 with open(path, 'r', encoding='utf-8', errors='replace') as f:
                     lines = f.readlines()
-            except Exception:
+                _log.warning("本地化文件编码异常，使用容错模式读取: %s", path)
+            except Exception as e:
+                _log.warning("无法读取本地化文件: %s — %s", path, e)
                 return
 
         current_lang = ''
@@ -345,8 +507,26 @@ class ResourceManager:
                     self._loc_by_lang[current_lang][key] = val
 
     # ------------------------------------------------------------------
-    # Event scanning
+    # Event scanning（懒加载：仅在事件关联面板首次展开时调用）
     # ------------------------------------------------------------------
+
+    def ensure_events_scanned(self) -> bool:
+        """
+        按需扫描事件目录（懒加载）。
+        仅扫描尚未扫描过的目录，避免重复开销。
+        返回 True 表示本次调用确实执行了扫描，False 表示全部命中缓存。
+        """
+        dirs_to_scan: List[str] = []
+        for d in [self.game_dir, self.mod_dir] + self._extra_mod_dirs:
+            if d and os.path.isdir(d):
+                abs_d = os.path.abspath(d)
+                if abs_d not in self._events_scanned_dirs:
+                    dirs_to_scan.append(d)
+                    self._events_scanned_dirs.add(abs_d)
+        if not dirs_to_scan:
+            return False
+        self._scan_events(dirs_to_scan)
+        return True
 
     def _scan_events(self, search_dirs: List[str]):
         """Background-friendly: scan event dirs and merge results into _events."""
@@ -631,7 +811,7 @@ class ResourceManager:
         """Iterate over (name, SpriteInfo) pairs for all registered sprites."""
         return self._sprites.items()
 
-    def get_loc(self, key: str, _depth: int = 0) -> str:
+    def get_loc(self, key, _depth: int = 0) -> str:
         """Resolve a localization key with full Stellaris loc processing:
         - Literal \\n in the value → actual newline character
         - $OTHER_KEY$ references → recursively resolved (max depth 8)
@@ -639,6 +819,14 @@ class ResourceManager:
         """
         if not key:
             return ''
+        # 防御性处理：事件文件中同名键重复时 key 可能是列表，取第一个字符串
+        if not isinstance(key, str):
+            if isinstance(key, list):
+                key = next((x for x in key if isinstance(x, str)), '')
+            else:
+                key = str(key)
+            if not key:
+                return ''
         key = key.strip('"')
         value = self._loc.get(key, key)
         if _depth < 8:
@@ -1220,6 +1408,8 @@ class ResourceManager:
         self._gfx_files.clear()
         self._top_level_gui_index.clear()
         self._scrollbar_index.clear()
+        self._events.clear()
+        self._events_scanned_dirs.clear()
         self.clear_cache()
 
         if game_dir:

@@ -16,6 +16,35 @@
 
 ---
 
+## [1.1.0] - 2026-04-01
+
+### 修复
+
+- **加载卡死（严重）**：`_index_gfx_directory` 会递归扫描 `gfx/models/`、`gfx/fonts/`、`gfx/particles/` 等从不含精灵图定义的 3D 资源目录，导致在某些大型模组（如含数百个 .gfx 网格定义的目录）上解析器长时间挂起（实测单文件挂起 91 秒）。现已将这些目录加入跳过列表，并增加 512 KB 文件大小上限作为第二道防护。
+- **取消加载无响应**：取消检测点仅存在于各加载阶段之间，若线程卡在单个文件的解析内部则永远无法响应取消。上述卡死修复同时解决了此问题。
+- **启动时 UI 双重刷新**：`_ResourceLoaderThread` 将自定义信号命名为 `finished`，与 QThread 内建的 C++ `finished` 信号冲突，导致 PySide6 在线程结束时触发两次槽函数，每次启动均执行两遍精灵图库重建和文件浏览器刷新。已将自定义信号重命名为 `load_finished`，`_GuiLoadThread` 中同名问题一并修复。
+- **事件选项按钮位置错误**：当事件同时满足以下条件时，选项按钮容器（如 `ae_dialogue_button`）显示在画布默认位置（0,0）而非 `option_list` 容器内：事件有 `custom_gui` 但无 `custom_gui_option`，且各选项也未设置 `custom_gui` 属性（这是群星模组中的常见写法）。现通过扫描当前 GUI 文件的顶层节点自动检测选项按钮模板（含 `option_button` 子部件或 `OPTION_TEXT` 占位文本），在事件上下文激活时将模板隐藏并在 `option_list` 内按选项顺序重新渲染；最后一个选项优先使用名称含 `last` 的模板变体。
+- **崩溃：`ev.desc` 为列表类型**：Stellaris 事件文件允许同一块内出现多个 `desc = ...` 条目（用于条件描述），`_parse_block` 会将其积累为列表，后续传入 `rm.get_loc()` 时调用 `str.strip()` 崩溃。已通过 `_str_or_first()` 辅助函数和 `get_loc()` 的防御性类型检查修复，同样适用于 `id`、`title` 字段。
+
+### 改进
+
+- **运行日志全面增强**：
+  - 日志格式新增线程名字段（`[MainThread]` / `[Dummy-N]`），便于区分 UI 线程与后台加载线程
+  - 所有主要加载阶段（游戏目录、模组目录、GFX 扫描、本地化解析）均添加计时日志
+  - 单文件解析超过 1 秒时输出 WARNING 日志并附带文件路径
+  - 日志文件大小上限从 2 MB 提升至 5 MB
+- **文件浏览器性能**：刷新时仅扫描模组目录下的 `interface/` 子目录，不再递归遍历整个模组根目录，大幅减少刷新耗时（由数秒降至 30 ms 以内）
+- **GFX 目录扫描**：新增循环目录联接点检测（基于 `st_dev + st_ino`），防止 Windows NTFS 联接点导致的无限递归
+- **设置对话框**：新增"显示日志文件路径"标签和"清除上次加载的模组路径"按钮，方便排查问题
+
+### 内部
+
+- `_ResourceLoaderThread` 和 `_GuiLoadThread` 的自定义完成信号统一重命名为 `load_finished`，消除与 QThread 内建信号的命名冲突
+- `event_parser.scan_event_dirs` 切换为 `_safe_walk`，统一循环目录防护逻辑
+- `GUIScene` 新增 `_node_contains_option_button()` 和 `_find_option_template_names()` 辅助方法，支持无 `custom_gui_option` 时的选项 GUI 自动推断
+
+---
+
 ## [1.0.0] - 2026-03-26
 
 首个公开发布版本。从零构建，历经多轮迭代完成。
@@ -112,5 +141,6 @@
 
 ---
 
-[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases/tag/v1.0.0

@@ -22,7 +22,7 @@ from typing import Optional
 
 _LOG_DIR = Path.home() / '.stellaris_gui_editor' / 'logs'
 _LOG_FILE = _LOG_DIR / 'stellaris_gui_editor.log'
-_MAX_BYTES = 2 * 1024 * 1024   # 2 MB per file
+_MAX_BYTES = 5 * 1024 * 1024   # 5 MB per file（调试信息量大，适当增大）
 _BACKUP_COUNT = 4               # 保留 4 个旧文件（共 5 个）
 
 _initialized = False
@@ -45,8 +45,9 @@ def setup(log_level: str = 'INFO') -> None:
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
     level = getattr(logging, log_level.upper(), logging.INFO)
 
+    # 文件日志格式含线程名，便于定位多线程问题
     formatter = logging.Formatter(
-        fmt='%(asctime)s  %(levelname)-8s  %(name)s  —  %(message)s',
+        fmt='%(asctime)s  %(levelname)-8s  [%(threadName)s]  %(name)s  —  %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
     )
 

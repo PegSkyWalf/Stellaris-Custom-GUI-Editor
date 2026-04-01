@@ -13,8 +13,12 @@ extracting GUI-relevant fields:
 from __future__ import annotations
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+from .logger import get_logger
+_log = get_logger('event_parser')
 
 
 # ------------------------------------------------------------------
@@ -46,6 +50,25 @@ class EventInfo:
 # ------------------------------------------------------------------
 # Lightweight tokeniser (not using PDXParser to keep this standalone)
 # ------------------------------------------------------------------
+
+def _safe_walk(top: str):
+    """os.walk 包装：跳过 Windows 目录联接点引起的循环引用。"""
+    from typing import Set as _Set
+    seen: _Set[tuple] = set()
+    for dirpath, dirnames, filenames in os.walk(top):
+        try:
+            s = os.stat(dirpath)
+            key = (s.st_dev, s.st_ino)
+        except OSError:
+            key = None
+        if key is not None:
+            if key in seen:
+                _log.warning("事件扫描：检测到循环目录引用，跳过: %s", dirpath)
+                dirnames[:] = []
+                continue
+            seen.add(key)
+        yield dirpath, dirnames, filenames
+
 
 _EVENT_TYPES = {
     'country_event', 'fleet_event', 'ship_event', 'pop_event',
@@ -159,11 +182,22 @@ def _parse_events_from_tokens(tokens: List[str], file_path: str) -> List[EventIn
     return events
 
 
+def _str_or_first(v) -> str:
+    """如果 v 是列表（同名键出现多次），取第一个字符串值；否则直接转字符串。"""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, list):
+        for item in v:
+            if isinstance(item, str):
+                return item
+    return ''
+
+
 def _build_event_info(block: dict, evt_type: str, file_path: str) -> EventInfo:
     evt = EventInfo(file_path=file_path, event_type=evt_type)
-    evt.id = block.get('id', '')
-    evt.title = block.get('title', '')
-    evt.desc = block.get('desc', '')
+    evt.id = _str_or_first(block.get('id', ''))
+    evt.title = _str_or_first(block.get('title', ''))
+    evt.desc = _str_or_first(block.get('desc', ''))
     evt.custom_gui = block.get('custom_gui', '')
     evt.custom_gui_option = block.get('custom_gui_option', '')
 
@@ -223,21 +257,26 @@ def scan_event_dirs(search_dirs: List[str]) -> Dict[str, List[EventInfo]]:
     Returns a dict: custom_gui_name → [EventInfo, ...]
     Deduplicates by event id.
     """
+    t0 = time.monotonic()
     result: Dict[str, List[EventInfo]] = {}
     seen_ids: set = set()
+    total_files = total_events = 0
 
     for base in search_dirs:
         evt_dir = os.path.join(base, 'events')
         if not os.path.isdir(evt_dir):
             continue
-        for root, dirs, files in os.walk(evt_dir):
+        _log.debug("扫描事件目录: %s", evt_dir)
+        for root, dirs, files in _safe_walk(evt_dir):
             for fname in files:
                 if not fname.lower().endswith('.txt'):
                     continue
                 fpath = os.path.join(root, fname)
+                total_files += 1
                 try:
                     events = parse_event_file(fpath)
-                except Exception:
+                except Exception as e:
+                    _log.warning("解析事件文件失败: %s — %s", fpath, e)
                     continue
                 for ev in events:
                     key = (ev.custom_gui, ev.id)
@@ -245,5 +284,9 @@ def scan_event_dirs(search_dirs: List[str]) -> Dict[str, List[EventInfo]]:
                         continue
                     seen_ids.add(key)
                     result.setdefault(ev.custom_gui, []).append(ev)
+                    total_events += 1
 
+    gui_count = len(result)
+    _log.info("事件扫描完成: %d 个 .txt 文件，%d 个含 custom_gui 的事件，关联 %d 个 GUI，耗时 %.2fs",
+              total_files, total_events, gui_count, time.monotonic() - t0)
     return result

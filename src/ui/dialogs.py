@@ -240,7 +240,20 @@ class SettingsDialog(QDialog):
 
         open_log_btn = QPushButton('打开日志目录')
         open_log_btn.clicked.connect(self._open_log_dir)
+        from ..core.logger import get_log_dir, _LOG_FILE
+        log_path_lbl = QLabel(str(_LOG_FILE))
+        log_path_lbl.setStyleSheet('color:#888; font-size:8px;')
+        log_path_lbl.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        log_path_lbl.setWordWrap(True)
         form.addRow('', open_log_btn)
+        form.addRow('日志文件:', log_path_lbl)
+
+        form.addRow(QLabel(''))
+        clear_mod_btn = QPushButton('清除上次加载的模组路径')
+        clear_mod_btn.setToolTip('若应用启动时因自动加载模组而卡死，可点此清除记录')
+        clear_mod_btn.clicked.connect(self._clear_last_mod_dir)
+        form.addRow('恢复:', clear_mod_btn)
 
         form.addRow(QLabel(''))
         reset_btn = QPushButton('重置首次启动向导')
@@ -391,6 +404,11 @@ class SettingsDialog(QDialog):
             subprocess.run(['open', log_dir])
         else:
             subprocess.run(['xdg-open', log_dir])
+
+    def _clear_last_mod_dir(self):
+        from PySide6.QtWidgets import QMessageBox
+        self._settings.last_mod_dir = ''
+        QMessageBox.information(self, '已清除', '上次加载的模组路径已清除。\n下次启动时将不再自动加载该模组。')
 
     def _reset_first_run(self):
         self._settings.first_run = True

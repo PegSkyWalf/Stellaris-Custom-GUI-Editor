@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 import os
+import time
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -12,6 +13,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
 from ..core.resource_manager import ResourceManager
+from ..core.logger import get_logger
+_log = get_logger('file_browser')
 
 
 class FileBrowser(QWidget):
@@ -59,14 +62,19 @@ class FileBrowser(QWidget):
 
     def refresh(self):
         self._tree.clear()
+        t0 = time.monotonic()
 
         if self._mod_dir:
             mod_root = QTreeWidgetItem(self._tree,
                 [f'📁 模组: {os.path.basename(self._mod_dir)}'])
             mod_root.setExpanded(True)
             mod_root.setForeground(0, QColor('#7ec8e3'))
+            # 只扫描 interface/ 子目录，避免递归遍历整个模组目录（含大量非 GUI 文件）
+            mod_iface = os.path.join(self._mod_dir, 'interface')
+            scan_root = mod_iface if os.path.isdir(mod_iface) else self._mod_dir
+            _log.debug("文件浏览器扫描目录: %s", scan_root)
             self._add_directory_tree(
-                mod_root, self._mod_dir,
+                mod_root, scan_root,
                 filter_ext={'.gui', '.guicore', '.gfx', '.gfxcore'}
             )
 
@@ -77,6 +85,8 @@ class FileBrowser(QWidget):
                 game_root.setForeground(0, QColor('#aaa'))
                 self._add_directory_tree(game_root, iface,
                     filter_ext={'.gui', '.gfx'})
+
+        _log.debug("文件浏览器刷新完成，耗时 %.3fs", time.monotonic() - t0)
 
     def _add_directory_tree(self, parent_item: QTreeWidgetItem, dir_path: str, filter_ext=None):
         try:

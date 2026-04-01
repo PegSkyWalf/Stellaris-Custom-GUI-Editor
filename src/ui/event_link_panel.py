@@ -105,6 +105,8 @@ class EventLinkPanel(QWidget):
                 f'GUI: {self._gui_names[0]}  (+{len(self._gui_names) - 1} 个)')
 
         rm = ResourceManager.instance()
+        # 懒加载：首次查询时才扫描事件目录（避免启动时扫描大型模组卡死）
+        rm.ensure_events_scanned()
         seen_ids: set = set()
         for gui_name in self._gui_names:
             for ev in rm.get_events_for_gui(gui_name):

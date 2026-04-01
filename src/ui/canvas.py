@@ -60,6 +60,10 @@ class GUIScene(QGraphicsScene):
         self._text_overrides: Dict[int, str] = {}
         # node id → room pixmap (for portrait container)
         self._room_pixmap_cache = {}
+        # Top-level items hidden during event context (option button templates rendered
+        # at their native position when no event context is active; hidden + re-built
+        # inside option_list when an event context is set)
+        self._hidden_template_items: list = []
 
         self.selectionChanged.connect(self._on_selection_changed)
 
@@ -67,6 +71,7 @@ class GUIScene(QGraphicsScene):
         # Discard event-overlay item list BEFORE self.clear() so we never hold
         # Python wrappers that point to C++ objects Qt is about to delete.
         self._event_overlay_items = []
+        self._hidden_template_items = []
         self._event_context = None
         self.clear()
         self._node_to_item.clear()
@@ -247,6 +252,13 @@ class GUIScene(QGraphicsScene):
                 except RuntimeError:
                     pass
             self._event_overlay_items = []
+            # Restore any top-level template items that were hidden
+            for item in getattr(self, '_hidden_template_items', []):
+                try:
+                    item.setVisible(True)
+                except RuntimeError:
+                    pass
+            self._hidden_template_items = []
             for item in self.items():
                 if isinstance(item, GUIWidgetItem):
                     try:
@@ -379,18 +391,64 @@ class GUIScene(QGraphicsScene):
             except RuntimeError:
                 pass  # C++ object already deleted; nothing to do
         self._event_overlay_items: list = []
+        # Restore previously hidden template items before hiding new ones
+        for item in getattr(self, '_hidden_template_items', []):
+            try:
+                item.setVisible(True)
+            except RuntimeError:
+                pass
+        self._hidden_template_items = []
 
-        if option_list_item and (event_info.custom_gui_option
-                                  or any(getattr(o, 'custom_gui', '') for o in event_info.options)):
-            self._build_option_guis_in_list(option_list_item, event_info, rm, opt_texts)
+        has_explicit_gui = (event_info.custom_gui_option
+                            or any(getattr(o, 'custom_gui', '') for o in event_info.options))
+
+        # Fallback: when no custom_gui_option / per-option custom_gui is set,
+        # detect option button template containers from the document roots.
+        # These are top-level containerWindowType widgets (other than the main event
+        # GUI) that contain a buttonType named "option_button" or a text/buttonText
+        # placeholder of "OPTION_TEXT".  Hide them at their native position and
+        # re-render them inside option_list instead.
+        fallback_reg: list = []
+        fallback_last: list = []
+        if option_list_item and not has_explicit_gui and event_info.options:
+            fallback_reg, fallback_last = self._find_option_template_names(event_info)
+            if fallback_reg or fallback_last:
+                template_lower = {n.lower() for n in (fallback_reg + fallback_last)}
+                for item in self.items():
+                    if not isinstance(item, GUIWidgetItem):
+                        continue
+                    if item.parentItem() is not None:
+                        continue  # only top-level items
+                    node = item.node
+                    if (node.widget_type.lower() == 'containerwindowtype'
+                            and (node.name or '').lower() in template_lower):
+                        item.setVisible(False)
+                        self._hidden_template_items.append(item)
+
+        if option_list_item and (has_explicit_gui or fallback_reg or fallback_last):
+            self._build_option_guis_in_list(
+                option_list_item, event_info, rm, opt_texts,
+                fallback_reg=fallback_reg, fallback_last=fallback_last,
+            )
 
         self.update()
 
     def _build_option_guis_in_list(self, option_list_item: 'GUIWidgetItem',
-                                    event_info, rm, opt_texts: list):
-        """Build scene items for each option GUI inside the option_list listbox."""
+                                    event_info, rm, opt_texts: list,
+                                    *, fallback_reg: list = None,
+                                    fallback_last: list = None):
+        """Build scene items for each option GUI inside the option_list listbox.
+
+        fallback_reg / fallback_last: template names detected from the document when
+        the event has neither custom_gui_option nor per-option custom_gui.
+        fallback_last is used for the last option (e.g. ae_dialogue_button_last);
+        fallback_reg is used for all other options.
+        """
         from ..core.gui_model import resolve_editor_layout_sizes
         from ..core.settings import AppSettings
+
+        fallback_reg = fallback_reg or []
+        fallback_last = fallback_last or []
 
         # Collect option GUI names in order
         option_gui_names: list = []
@@ -402,6 +460,18 @@ class GUIScene(QGraphicsScene):
             if gui_n:
                 opt_loc = rm.get_loc(opt.name) if opt.name else ''
                 option_gui_names.append((gui_n, opt_loc))
+
+        # Fallback: no explicit custom_gui_option / per-option custom_gui — use
+        # template containers detected from the document (e.g. ae_dialogue_button /
+        # ae_dialogue_button_last when options have no custom_gui attribute).
+        if not option_gui_names and (fallback_reg or fallback_last):
+            n_opts = len(event_info.options)
+            for i, opt in enumerate(event_info.options):
+                opt_loc = rm.get_loc(opt.name) if opt.name else ''
+                if fallback_last and i == n_opts - 1:
+                    option_gui_names.append((fallback_last[0], opt_loc))
+                elif fallback_reg:
+                    option_gui_names.append((fallback_reg[0], opt_loc))
 
         if not option_gui_names:
             return
@@ -471,6 +541,43 @@ class GUIScene(QGraphicsScene):
             item.set_event_overrides(text, None)
 
         self.update()
+
+    @staticmethod
+    def _node_contains_option_button(node) -> bool:
+        """Return True if node or any descendant is an option_button widget or
+        has an OPTION_TEXT text/buttonText placeholder."""
+        if (node.name or '').lower() == 'option_button':
+            return True
+        key = node.get_text_localization_key() or ''
+        if key.strip().upper() == 'OPTION_TEXT':
+            return True
+        for child in node.children:
+            if GUIScene._node_contains_option_button(child):
+                return True
+        return False
+
+    def _find_option_template_names(self, event_info) -> tuple:
+        """Scan the current document's top-level nodes for containerWindowType widgets
+        that look like option button templates (contain option_button / OPTION_TEXT).
+        Returns (regular_names, last_names) — last_names are for the final option.
+        Only looks at siblings of the main event GUI, not the event GUI itself."""
+        if not self.doc:
+            return [], []
+        main_gui_lower = (event_info.custom_gui or '').lower()
+        regular: list = []
+        last: list = []
+        for root in self.doc.roots:
+            if root.widget_type.lower() != 'containerwindowtype':
+                continue
+            name = root.name or ''
+            if name.lower() == main_gui_lower:
+                continue  # skip the main event GUI itself
+            if self._node_contains_option_button(root):
+                if 'last' in name.lower():
+                    last.append(name)
+                else:
+                    regular.append(name)
+        return regular, last
 
     def _layout_dims_for_parent(self, parent_node: Optional[WidgetNode]) -> Tuple[float, float]:
         """Convenience: canvas size + _parent_layout_dimensions."""
