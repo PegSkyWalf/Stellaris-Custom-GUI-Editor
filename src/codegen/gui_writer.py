@@ -388,11 +388,18 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
                 child_start = child._source_span.start
                 child_end = child._source_span.end
                 child_level = _detect_indent_level(raw, child_start)
-                child_adjusted_start = _line_indent_start(raw, child_start)
                 # 递归 patch 子节点
                 child_text = _patch_widget_recursive(child, raw, child_level)
-                # 转换为相对于 widget_source 的偏移
-                rel_start = child_adjusted_start - span_start
+                # 转换为相对于 widget_source 的偏移。
+                # 关键：_patch_widget_recursive 有两种返回值格式：
+                #   - child._source_modified=True  → write_widget() 输出，带缩进前缀
+                #     此时替换起点需从行首开始（含原始缩进字符），由新生成的缩进替换
+                #   - child._source_modified=False → widget_source（从关键字开头，无前缀空白）
+                #     此时替换起点从关键字本身开始，原始行首缩进字符保留在 result 中不被覆盖
+                if child._source_modified:
+                    rel_start = _line_indent_start(raw, child_start) - span_start
+                else:
+                    rel_start = child_start - span_start
                 rel_end = child_end - span_start
                 child_patches.append((rel_start, rel_end, child_text))
         else:
@@ -431,10 +438,14 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
         for child in new_children:
             insert_parts.append('\n'.join(write_widget(child, level=child_level)))
         insert_text = '\n\n' + '\n\n'.join(insert_parts) + '\n'
-        # 在 widget 源码的最后一个 } 之前插入
+        # 在 widget 源码的最后一个 } 所在行的行首之前插入。
+        # 注意：不能只在 } 字符前插入，那样会把行首缩进留在插入内容之前，
+        # 导致 } 被顶到下一行列0（缩进丢失）。必须从 \n 前插入，让整行保持原位。
         last_brace = result.rfind('}')
         if last_brace >= 0:
-            result = result[:last_brace] + insert_text + result[last_brace:]
+            line_start = result.rfind('\n', 0, last_brace)
+            insert_pos = line_start if line_start >= 0 else last_brace
+            result = result[:insert_pos] + insert_text + result[insert_pos:]
 
     return result
 
