@@ -20,6 +20,8 @@ from typing import Optional, List, Tuple
 
 from ..core.logger import get_logger
 _log = get_logger('main_window')
+from ..core import i18n as _i18n
+from ..core.i18n import _
 
 from PySide6.QtWidgets import (
     QMainWindow, QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
@@ -108,7 +110,7 @@ class _ResourceLoaderThread(QThread):
                   [os.path.basename(d) for d in self._extra_dirs])
         try:
             if self._game_dir:
-                self.progress.emit(f'正在加载原版资源: {self._game_dir} ...')
+                self.progress.emit(_('正在加载原版资源: ') + self._game_dir + ' ...')
                 t = time.monotonic()
                 self._rm.load_game_dir(self._game_dir, self._cancel_event)
                 _log.info("游戏目录加载耗时 %.2fs", time.monotonic() - t)
@@ -117,7 +119,7 @@ class _ResourceLoaderThread(QThread):
                 self.cancelled.emit()
                 return
             if self._mod_dir and os.path.isdir(self._mod_dir):
-                self.progress.emit(f'正在加载模组: {os.path.basename(self._mod_dir)} ...')
+                self.progress.emit(_('正在加载模组: ') + os.path.basename(self._mod_dir) + ' ...')
                 t = time.monotonic()
                 self._rm.load_mod_dir(self._mod_dir, self._cancel_event)
                 _log.info("模组目录加载耗时 %.2fs", time.monotonic() - t)
@@ -131,7 +133,7 @@ class _ResourceLoaderThread(QThread):
                     self.cancelled.emit()
                     return
                 if os.path.isdir(extra):
-                    self.progress.emit(f'正在加载额外目录: {os.path.basename(extra)} ...')
+                    self.progress.emit(_('正在加载额外目录: ') + os.path.basename(extra) + ' ...')
                     t = time.monotonic()
                     self._rm.load_extra_mod_dir(extra, self._cancel_event)
                     _log.info("额外目录 %s 加载耗时 %.2fs", os.path.basename(extra), time.monotonic() - t)
@@ -327,6 +329,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self._settings = AppSettings.instance()
+        # Apply saved UI language before building any UI
+        _i18n.set_language(self._settings.get('ui_language', 'zh_CN'))
         self._rm = ResourceManager.instance()
         self._current_doc: Optional[GUIDocument] = None
         self._saved_doc_copy: Optional[GUIDocument] = None  # for reset
@@ -348,7 +352,7 @@ class MainWindow(QMainWindow):
         self._act_save_as: Optional[QAction] = None
         self._act_load_mod: Optional[QAction] = None
 
-        self.setWindowTitle('群星 GUI 编辑器')
+        self.setWindowTitle(_('群星 GUI 编辑器'))
         self.setMinimumSize(1200, 800)
         self.resize(1720, 960)
 
@@ -381,7 +385,7 @@ class MainWindow(QMainWindow):
         bar_lay.setContentsMargins(8, 0, 8, 0)
         bar_lay.setSpacing(6)
 
-        bar_lbl = QLabel('自定义 GUI:')
+        bar_lbl = QLabel(_('自定义 GUI:'))
         bar_lbl.setStyleSheet('font-size:9px;')
         bar_lay.addWidget(bar_lbl)
 
@@ -390,20 +394,20 @@ class MainWindow(QMainWindow):
         self._gui_selector.setMaximumWidth(480)
         self._gui_selector.setStyleSheet('font-size:9px;')
         self._gui_selector.setToolTip(
-            '当前文件中所有顶层 containerWindowType（完整自定义 GUI）。\n'
-            '选择后事件面板自动筛选，点击"定位"可在画布中居中该 GUI。'
+            _('当前文件中所有顶层 containerWindowType（完整自定义 GUI）。\n'
+              '选择后事件面板自动筛选，点击"定位"可在画布中居中该 GUI。')
         )
         self._gui_selector.currentIndexChanged.connect(self._on_gui_selector_changed)
         bar_lay.addWidget(self._gui_selector)
 
         accent = self._settings.accent_color or '#0e639c'
-        locate_btn = QPushButton('定位')
+        locate_btn = QPushButton(_('定位'))
         locate_btn.setFixedWidth(46)
         locate_btn.setFixedHeight(22)
         locate_btn.setStyleSheet(
             f'background:{accent}; color:#fff; border:none; border-radius:3px; font-size:9px;'
         )
-        locate_btn.setToolTip('在画布中居中显示所选 GUI')
+        locate_btn.setToolTip(_('在画布中居中显示所选 GUI'))
         locate_btn.clicked.connect(self._locate_selected_gui)
         bar_lay.addWidget(locate_btn)
         bar_lay.addStretch()
@@ -419,28 +423,28 @@ class MainWindow(QMainWindow):
 
     def _setup_docks(self):
         # 左侧：控件库 + 预设库 + 文件浏览器
-        left_dock = QDockWidget('库', self)
+        left_dock = QDockWidget(_('库'), self)
         left_dock.setObjectName('left_dock')
         left_dock.setMinimumWidth(220)
         left_tabs = QTabWidget()
         self._widget_lib = WidgetLibrary()
-        left_tabs.addTab(self._widget_lib, '控件库')
+        left_tabs.addTab(self._widget_lib, _('控件库'))
         self._preset_lib = PresetLibrary()
-        left_tabs.addTab(self._preset_lib, '预设库')
+        left_tabs.addTab(self._preset_lib, _('预设库'))
         self._file_browser = FileBrowser()
-        left_tabs.addTab(self._file_browser, '文件')
+        left_tabs.addTab(self._file_browser, _('文件'))
         left_dock.setWidget(left_tabs)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, left_dock)
 
         # 左下：图层面板
-        layer_dock = QDockWidget('图层', self)
+        layer_dock = QDockWidget(_('图层'), self)
         layer_dock.setObjectName('layer_dock')
         self._layer_panel = LayerPanel()
         layer_dock.setWidget(self._layer_panel)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, layer_dock)
 
         # 左下：虚拟编组面板
-        vgroup_dock = QDockWidget('编组', self)
+        vgroup_dock = QDockWidget(_('编组'), self)
         vgroup_dock.setObjectName('vgroup_dock')
         self._vgroup_panel = VirtualGroupsPanel()
         vgroup_dock.setWidget(self._vgroup_panel)
@@ -449,14 +453,14 @@ class MainWindow(QMainWindow):
         layer_dock.raise_()  # 默认显示图层标签页
 
         # 右侧：属性面板 + 精灵图库
-        props_dock = QDockWidget('属性', self)
+        props_dock = QDockWidget(_('属性'), self)
         props_dock.setObjectName('props_dock')
         props_dock.setMinimumWidth(270)
         self._props_panel = PropertiesPanel()
         props_dock.setWidget(self._props_panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, props_dock)
 
-        sprite_dock = QDockWidget('精灵图库', self)
+        sprite_dock = QDockWidget(_('精灵图库'), self)
         sprite_dock.setObjectName('sprite_dock')
         self._sprite_lib = SpriteLibrary()
         sprite_dock.setWidget(self._sprite_lib)
@@ -465,13 +469,13 @@ class MainWindow(QMainWindow):
         props_dock.raise_()
 
         # 下方：代码视图
-        be_dock = QDockWidget('Button Effects 编辑器', self)
+        be_dock = QDockWidget(_('Button Effects 编辑器'), self)
         self._be_editor = ButtonEffectsEditor()
         be_dock.setWidget(self._be_editor)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, be_dock)
         be_dock.hide()   # hidden by default; user opens via menu
 
-        code_dock = QDockWidget('代码视图', self)
+        code_dock = QDockWidget(_('代码视图'), self)
         code_dock.setObjectName('code_dock')
         code_dock.setMinimumHeight(140)
         self._code_view = CodeView()
@@ -479,7 +483,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, code_dock)
 
         # 名称重复警告面板
-        warnings_dock = QDockWidget('名称警告', self)
+        warnings_dock = QDockWidget(_('名称警告'), self)
         warnings_dock.setObjectName('warnings_dock')
         self._warnings_panel = NameWarningsPanel()
         warnings_dock.setWidget(self._warnings_panel)
@@ -488,7 +492,7 @@ class MainWindow(QMainWindow):
         code_dock.raise_()
 
         # 右侧：事件关联面板
-        event_dock = QDockWidget('事件关联', self)
+        event_dock = QDockWidget(_('事件关联'), self)
         event_dock.setObjectName('event_dock')
         event_dock.setMinimumWidth(260)
         self._event_panel = EventLinkPanel()
@@ -501,147 +505,147 @@ class MainWindow(QMainWindow):
         mb = self.menuBar()
 
         # ---- 文件 ----
-        file_menu = mb.addMenu('文件(&F)')
-        self._act_new = file_menu.addAction('新建 GUI 文件(&N)', self._new_file)
+        file_menu = mb.addMenu(_('文件(&F)'))
+        self._act_new = file_menu.addAction(_('新建 GUI 文件(&N)'), self._new_file)
         self._act_new.setShortcut(QKeySequence.StandardKey.New)
-        self._act_open = file_menu.addAction('打开 GUI 文件(&O)...', self._open_file)
+        self._act_open = file_menu.addAction(_('打开 GUI 文件(&O)...'), self._open_file)
         self._act_open.setShortcut(QKeySequence.StandardKey.Open)
-        self._act_load_mod = file_menu.addAction('打开模组目录(&M)...', self._open_mod_dir)
+        self._act_load_mod = file_menu.addAction(_('打开模组目录(&M)...'), self._open_mod_dir)
         file_menu.addSeparator()
-        self._act_save = file_menu.addAction('保存(&S)', self._save)
+        self._act_save = file_menu.addAction(_('保存(&S)'), self._save)
         self._act_save.setShortcut(QKeySequence.StandardKey.Save)
-        self._act_save_as = file_menu.addAction('另存为(&A)...', self._save_as)
+        self._act_save_as = file_menu.addAction(_('另存为(&A)...'), self._save_as)
         self._act_save_as.setShortcut(QKeySequence('Ctrl+Shift+S'))
         file_menu.addSeparator()
-        self._recent_menu = file_menu.addMenu('最近文件')
+        self._recent_menu = file_menu.addMenu(_('最近文件'))
         self._update_recent_menu()
         file_menu.addSeparator()
-        file_menu.addAction('退出(&Q)', self.close).setShortcut(QKeySequence.StandardKey.Quit)
+        file_menu.addAction(_('退出(&Q)'), self.close).setShortcut(QKeySequence.StandardKey.Quit)
 
         # ---- 编辑 ----
-        edit_menu = mb.addMenu('编辑(&E)')
+        edit_menu = mb.addMenu(_('编辑(&E)'))
 
-        self._act_undo = edit_menu.addAction('撤销(&Z)')
+        self._act_undo = edit_menu.addAction(_('撤销(&Z)'))
         self._act_undo.setShortcut(QKeySequence.StandardKey.Undo)
         self._act_undo.setEnabled(False)
         self._act_undo.triggered.connect(self._undo)
 
-        self._act_redo = edit_menu.addAction('重做(&Y)')
+        self._act_redo = edit_menu.addAction(_('重做(&Y)'))
         self._act_redo.setShortcut(QKeySequence.StandardKey.Redo)
         self._act_redo.setEnabled(False)
         self._act_redo.triggered.connect(self._redo)
 
         edit_menu.addSeparator()
-        edit_menu.addAction('全选(&A)', self._canvas.select_all).setShortcut(QKeySequence.StandardKey.SelectAll)
-        edit_menu.addAction('复制控件(&D)', self._duplicate_widget).setShortcut(QKeySequence('Ctrl+D'))
-        edit_menu.addAction('删除控件(&X)', self._delete_widget).setShortcut(QKeySequence.StandardKey.Delete)
+        edit_menu.addAction(_('全选(&A)'), self._canvas.select_all).setShortcut(QKeySequence.StandardKey.SelectAll)
+        edit_menu.addAction(_('复制控件(&D)'), self._duplicate_widget).setShortcut(QKeySequence('Ctrl+D'))
+        edit_menu.addAction(_('删除控件(&X)'), self._delete_widget).setShortcut(QKeySequence.StandardKey.Delete)
         edit_menu.addSeparator()
-        edit_menu.addAction('复制 (Ctrl+C)', self._copy_selected).setShortcut(QKeySequence.StandardKey.Copy)
-        edit_menu.addAction('粘贴 (Ctrl+V)', self._paste_selected).setShortcut(QKeySequence.StandardKey.Paste)
+        edit_menu.addAction(_('复制 (Ctrl+C)'), self._copy_selected).setShortcut(QKeySequence.StandardKey.Copy)
+        edit_menu.addAction(_('粘贴 (Ctrl+V)'), self._paste_selected).setShortcut(QKeySequence.StandardKey.Paste)
         edit_menu.addSeparator()
-        edit_menu.addAction('保存选中为预设...', self._save_preset)
+        edit_menu.addAction(_('保存选中为预设...'), self._save_preset)
         edit_menu.addSeparator()
-        edit_menu.addAction('查找控件(&F)', self._find_widget).setShortcut(QKeySequence('Ctrl+F'))
+        edit_menu.addAction(_('查找控件(&F)'), self._find_widget).setShortcut(QKeySequence('Ctrl+F'))
 
         # Reset submenu (防误触)
-        reset_menu = edit_menu.addMenu('重置')
-        reset_menu.addAction('重置当前文件的所有修改', self._reset_all_changes)
+        reset_menu = edit_menu.addMenu(_('重置'))
+        reset_menu.addAction(_('重置当前文件的所有修改'), self._reset_all_changes)
 
         # ---- 视图 ----
-        view_menu = mb.addMenu('视图(&V)')
-        view_menu.addAction('适应画布(&0)', self._canvas.fit_to_canvas).setShortcut(QKeySequence('Ctrl+0'))
-        view_menu.addAction('放大(&+)', self._canvas.zoom_in).setShortcut(QKeySequence.StandardKey.ZoomIn)
-        view_menu.addAction('缩小(&-)', self._canvas.zoom_out).setShortcut(QKeySequence.StandardKey.ZoomOut)
-        view_menu.addAction('居中到选中 (Ctrl+F)', self._canvas.center_on_selected).setShortcut(QKeySequence('Ctrl+F'))
-        view_menu.addAction('缩放到选中 (Ctrl+Shift+F)', self._canvas.zoom_to_selection).setShortcut(QKeySequence('Ctrl+Shift+F'))
+        view_menu = mb.addMenu(_('视图(&V)'))
+        view_menu.addAction(_('适应画布(&0)'), self._canvas.fit_to_canvas).setShortcut(QKeySequence('Ctrl+0'))
+        view_menu.addAction(_('放大(&+)'), self._canvas.zoom_in).setShortcut(QKeySequence.StandardKey.ZoomIn)
+        view_menu.addAction(_('缩小(&-)'), self._canvas.zoom_out).setShortcut(QKeySequence.StandardKey.ZoomOut)
+        view_menu.addAction(_('居中到选中 (Ctrl+F)'), self._canvas.center_on_selected).setShortcut(QKeySequence('Ctrl+F'))
+        view_menu.addAction(_('缩放到选中 (Ctrl+Shift+F)'), self._canvas.zoom_to_selection).setShortcut(QKeySequence('Ctrl+Shift+F'))
         view_menu.addSeparator()
 
-        self._act_grid = view_menu.addAction('显示网格(&G)')
+        self._act_grid = view_menu.addAction(_('显示网格(&G)'))
         self._act_grid.setCheckable(True)
         self._act_grid.setChecked(self._settings.show_grid)
         self._act_grid.setShortcut(QKeySequence('Ctrl+G'))
         self._act_grid.triggered.connect(self._toggle_grid)
 
-        self._act_snap = view_menu.addAction('吸附网格(&S)')
+        self._act_snap = view_menu.addAction(_('吸附网格(&S)'))
         self._act_snap.setCheckable(True)
         self._act_snap.setChecked(self._settings.snap_to_grid)
         self._act_snap.triggered.connect(self._toggle_snap)
 
         view_menu.addSeparator()
-        self._act_preview = view_menu.addAction('预览模式(&P)')
+        self._act_preview = view_menu.addAction(_('预览模式(&P)'))
         self._act_preview.setCheckable(True)
         self._act_preview.setShortcut(QKeySequence('Ctrl+P'))
         self._act_preview.triggered.connect(self._toggle_preview)
-        self._act_editor_scrollbars = view_menu.addAction('显示编辑器滑条(&B)')
+        self._act_editor_scrollbars = view_menu.addAction(_('显示编辑器滑条(&B)'))
         self._act_editor_scrollbars.setCheckable(True)
         self._act_editor_scrollbars.setChecked(self._settings.show_editor_scrollbars)
         self._act_editor_scrollbars.setToolTip(
-            '关闭后隐藏画布上由编辑器生成的预览用滑条，避免遮挡或与游戏布局不一致')
+            _('关闭后隐藏画布上由编辑器生成的预览用滑条，避免遮挡或与游戏布局不一致'))
         self._act_editor_scrollbars.triggered.connect(self._toggle_editor_scrollbars)
         view_menu.addSeparator()
-        view_menu.addAction('重新加载所有精灵图', self._reload_sprites)
-        view_menu.addAction('刷新画布(&F5)', self._refresh_canvas).setShortcut(
+        view_menu.addAction(_('重新加载所有精灵图'), self._reload_sprites)
+        view_menu.addAction(_('刷新画布(&F5)'), self._refresh_canvas).setShortcut(
             QKeySequence('Ctrl+Shift+F5')
         )
 
         # ---- 工作区 ----
-        ws_menu = mb.addMenu('工作区(&W)')
-        ws_menu.addAction('添加文件夹到工作区...', self._add_workspace_folder)
-        ws_menu.addAction('管理工作区文件夹...', self._manage_workspace_folders)
+        ws_menu = mb.addMenu(_('工作区(&W)'))
+        ws_menu.addAction(_('添加文件夹到工作区...'), self._add_workspace_folder)
+        ws_menu.addAction(_('管理工作区文件夹...'), self._manage_workspace_folders)
         ws_menu.addSeparator()
-        self._ws_folders_menu = ws_menu.addMenu('快速切换模组')
+        self._ws_folders_menu = ws_menu.addMenu(_('快速切换模组'))
         ws_menu.aboutToShow.connect(self._update_ws_folders_menu)
 
         # ---- 排列 ----
-        arrange_menu = mb.addMenu('排列(&A)')
+        arrange_menu = mb.addMenu(_('排列(&A)'))
         # 对齐
-        arrange_menu.addAction('左对齐', lambda: self._align('left')).setShortcut(QKeySequence('Ctrl+Alt+1'))
-        arrange_menu.addAction('右对齐', lambda: self._align('right')).setShortcut(QKeySequence('Ctrl+Alt+2'))
-        arrange_menu.addAction('水平居中', lambda: self._align('hcenter')).setShortcut(QKeySequence('Ctrl+Alt+3'))
-        arrange_menu.addAction('顶部对齐', lambda: self._align('top')).setShortcut(QKeySequence('Ctrl+Alt+4'))
-        arrange_menu.addAction('底部对齐', lambda: self._align('bottom')).setShortcut(QKeySequence('Ctrl+Alt+5'))
-        arrange_menu.addAction('垂直居中', lambda: self._align('vcenter')).setShortcut(QKeySequence('Ctrl+Alt+6'))
+        arrange_menu.addAction(_('左对齐'), lambda: self._align('left')).setShortcut(QKeySequence('Ctrl+Alt+1'))
+        arrange_menu.addAction(_('右对齐'), lambda: self._align('right')).setShortcut(QKeySequence('Ctrl+Alt+2'))
+        arrange_menu.addAction(_('水平居中'), lambda: self._align('hcenter')).setShortcut(QKeySequence('Ctrl+Alt+3'))
+        arrange_menu.addAction(_('顶部对齐'), lambda: self._align('top')).setShortcut(QKeySequence('Ctrl+Alt+4'))
+        arrange_menu.addAction(_('底部对齐'), lambda: self._align('bottom')).setShortcut(QKeySequence('Ctrl+Alt+5'))
+        arrange_menu.addAction(_('垂直居中'), lambda: self._align('vcenter')).setShortcut(QKeySequence('Ctrl+Alt+6'))
         arrange_menu.addSeparator()
         # 分布
-        arrange_menu.addAction('水平均匀分布', lambda: self._align('hdistrib'))
-        arrange_menu.addAction('垂直均匀分布', lambda: self._align('vdistrib'))
+        arrange_menu.addAction(_('水平均匀分布'), lambda: self._align('hdistrib'))
+        arrange_menu.addAction(_('垂直均匀分布'), lambda: self._align('vdistrib'))
         arrange_menu.addSeparator()
         # 阵列
-        arrange_menu.addAction('线性阵列...', self._linear_array).setShortcut(QKeySequence('Ctrl+Shift+L'))
-        arrange_menu.addAction('圆形阵列...', self._circular_array).setShortcut(QKeySequence('Ctrl+Shift+O'))
+        arrange_menu.addAction(_('线性阵列...'), self._linear_array).setShortcut(QKeySequence('Ctrl+Shift+L'))
+        arrange_menu.addAction(_('圆形阵列...'), self._circular_array).setShortcut(QKeySequence('Ctrl+Shift+O'))
         arrange_menu.addSeparator()
         # 镜像
-        arrange_menu.addAction('水平镜像', lambda: self._mirror('h'))
-        arrange_menu.addAction('垂直镜像', lambda: self._mirror('v'))
-        arrange_menu.addAction('镜像复制...', self._mirror_dialog)
+        arrange_menu.addAction(_('水平镜像'), lambda: self._mirror('h'))
+        arrange_menu.addAction(_('垂直镜像'), lambda: self._mirror('v'))
+        arrange_menu.addAction(_('镜像复制...'), self._mirror_dialog)
         arrange_menu.addSeparator()
         # 尺寸
-        arrange_menu.addAction('相同宽度', lambda: self._canvas.gui_scene.make_same_size('width'))
-        arrange_menu.addAction('相同高度', lambda: self._canvas.gui_scene.make_same_size('height'))
-        arrange_menu.addAction('相同尺寸', lambda: self._canvas.gui_scene.make_same_size('both'))
+        arrange_menu.addAction(_('相同宽度'), lambda: self._canvas.gui_scene.make_same_size('width'))
+        arrange_menu.addAction(_('相同高度'), lambda: self._canvas.gui_scene.make_same_size('height'))
+        arrange_menu.addAction(_('相同尺寸'), lambda: self._canvas.gui_scene.make_same_size('both'))
 
         # ---- 工具 ----
-        tools_menu = mb.addMenu('工具(&T)')
-        tools_menu.addAction('设置(&,)...', self._open_settings).setShortcut(QKeySequence('Ctrl+,'))
+        tools_menu = mb.addMenu(_('工具(&T)'))
+        tools_menu.addAction(_('设置(&,)...'), self._open_settings).setShortcut(QKeySequence('Ctrl+,'))
         tools_menu.addSeparator()
-        tools_menu.addAction('生成 .gfx 精灵注册文件...', self._generate_gfx)
+        tools_menu.addAction(_('生成 .gfx 精灵注册文件...'), self._generate_gfx)
         tools_menu.addSeparator()
-        tools_menu.addAction('验证当前 GUI 文件...', self._validate_gui)
+        tools_menu.addAction(_('验证当前 GUI 文件...'), self._validate_gui)
         tools_menu.addSeparator()
-        tools_menu.addAction('Button Effects 编辑器...', self._open_be_editor)
+        tools_menu.addAction(_('Button Effects 编辑器...'), self._open_be_editor)
         tools_menu.addSeparator()
-        tools_menu.addAction('手动刷新资源', self._manual_refresh_resources).setShortcut(
+        tools_menu.addAction(_('手动刷新资源'), self._manual_refresh_resources).setShortcut(
             QKeySequence('Ctrl+Shift+R')
         )
 
         # ---- 帮助 ----
-        help_menu = mb.addMenu('帮助(&H)')
-        help_menu.addAction('快捷键列表...', lambda: ShortcutsDialog(self).exec())
+        help_menu = mb.addMenu(_('帮助(&H)'))
+        help_menu.addAction(_('快捷键列表...'), lambda: ShortcutsDialog(self).exec())
         help_menu.addSeparator()
-        help_menu.addAction('关于...', lambda: AboutDialog(self).exec())
+        help_menu.addAction(_('关于...'), lambda: AboutDialog(self).exec())
 
     def _setup_toolbar(self):
-        tb = self.addToolBar('主工具栏')
+        tb = self.addToolBar(_('主工具栏'))
         tb.setMovable(False)
         tb.setIconSize(QSize(18, 18))
         self._toolbar = tb
@@ -658,58 +662,58 @@ class MainWindow(QMainWindow):
             tb.addAction(a)
             return a
 
-        _add('新建', self._new_file, '新建 GUI 文件', 'new-file')
-        _add('打开', self._open_file, '打开 .gui 文件', 'open-file')
-        _add('保存', self._save, '保存 (Ctrl+S)', 'save')
+        _add(_('新建'), self._new_file, _('新建 GUI 文件'), 'new-file')
+        _add(_('打开'), self._open_file, _('打开 .gui 文件'), 'open-file')
+        _add(_('保存'), self._save, _('保存 (Ctrl+S)'), 'save')
         tb.addSeparator()
 
-        self._tb_undo = _add('撤销', self._undo, '撤销 (Ctrl+Z)', 'undo')
+        self._tb_undo = _add(_('撤销'), self._undo, _('撤销 (Ctrl+Z)'), 'undo')
         self._tb_undo.setEnabled(False)
-        self._tb_redo = _add('重做', self._redo, '重做 (Ctrl+Y)', 'redo')
+        self._tb_redo = _add(_('重做'), self._redo, _('重做 (Ctrl+Y)'), 'redo')
         self._tb_redo.setEnabled(False)
         tb.addSeparator()
 
-        _add('适应画布', self._canvas.fit_to_canvas, '适应画布 (Ctrl+0)', 'zoom-fit')
-        _add('放大+', self._canvas.zoom_in, '放大', 'zoom-in')
-        _add('缩小-', self._canvas.zoom_out, '缩小', 'zoom-out')
-        _add('居中', self._canvas.center_on_selected, '居中到选中 (Ctrl+F)', 'center-view')
+        _add(_('适应画布'), self._canvas.fit_to_canvas, _('适应画布 (Ctrl+0)'), 'zoom-fit')
+        _add(_('放大+'), self._canvas.zoom_in, _('放大'), 'zoom-in')
+        _add(_('缩小-'), self._canvas.zoom_out, _('缩小'), 'zoom-out')
+        _add(_('居中'), self._canvas.center_on_selected, _('居中到选中 (Ctrl+F)'), 'center-view')
         tb.addSeparator()
 
-        _add('复制控件', self._duplicate_widget, '复制控件 (Ctrl+D)', 'duplicate')
-        _add('删除控件', self._delete_widget, '删除选中控件 (Del)', 'delete')
+        _add(_('复制控件'), self._duplicate_widget, _('复制控件 (Ctrl+D)'), 'duplicate')
+        _add(_('删除控件'), self._delete_widget, _('删除选中控件 (Del)'), 'delete')
         tb.addSeparator()
 
-        _add('左对齐', lambda: self._align('left'), '左对齐', 'align-left')
-        _add('水平居中', lambda: self._align('hcenter'), '水平居中', 'align-h-center')
-        _add('右对齐', lambda: self._align('right'), '右对齐', 'align-right')
-        _add('顶对齐', lambda: self._align('top'), '顶部对齐', 'align-top')
-        _add('垂直居中', lambda: self._align('vcenter'), '垂直居中', 'align-v-center')
-        _add('底对齐', lambda: self._align('bottom'), '底部对齐', 'align-bottom')
+        _add(_('左对齐'), lambda: self._align('left'), _('左对齐'), 'align-left')
+        _add(_('水平居中'), lambda: self._align('hcenter'), _('水平居中'), 'align-h-center')
+        _add(_('右对齐'), lambda: self._align('right'), _('右对齐'), 'align-right')
+        _add(_('顶对齐'), lambda: self._align('top'), _('顶部对齐'), 'align-top')
+        _add(_('垂直居中'), lambda: self._align('vcenter'), _('垂直居中'), 'align-v-center')
+        _add(_('底对齐'), lambda: self._align('bottom'), _('底部对齐'), 'align-bottom')
         tb.addSeparator()
 
-        self._tb_preview = QAction('预览模式', self)
+        self._tb_preview = QAction(_('预览模式'), self)
         self._tb_preview.setCheckable(True)
         self._tb_preview.setIcon(IconProvider.themed_icon('preview', 18))
         self._toolbar_icon_actions.append((self._tb_preview, 'preview'))
-        self._tb_preview.setToolTip('切换预览模式 (Ctrl+P)')
+        self._tb_preview.setToolTip(_('切换预览模式 (Ctrl+P)'))
         self._tb_preview.triggered.connect(self._toggle_preview)
         tb.addAction(self._tb_preview)
         tb.addSeparator()
 
         # Refresh canvas button
-        _add('刷新画布', self._refresh_canvas, '强制刷新画布显示 (Ctrl+Shift+F5)',
+        _add(_('刷新画布'), self._refresh_canvas, _('强制刷新画布显示 (Ctrl+Shift+F5)'),
              'refresh')
 
         tb.addSeparator()
         # Language selector
-        self._lang_label = QLabel('  本地化: ')
+        self._lang_label = QLabel(_('  本地化: '))
         lang_label = self._lang_label
         lang_label.setStyleSheet(f'color:{ThemeManager.muted_color()};')
         tb.addWidget(lang_label)
         self._lang_combo = QComboBox()
         self._lang_combo.setMinimumWidth(120)
-        self._lang_combo.setToolTip('切换本地化语言')
-        self._lang_combo.addItem('（未加载）', '')
+        self._lang_combo.setToolTip(_('切换本地化语言'))
+        self._lang_combo.addItem(_('（未加载）'), '')
         self._lang_combo.currentIndexChanged.connect(self._on_language_changed)
         tb.addWidget(self._lang_combo)
 
@@ -729,9 +733,9 @@ class MainWindow(QMainWindow):
         self._game_status_icon.setPixmap(IconProvider.pixmap('circle-empty', 10, '#e74c3c'))
         self._game_status_icon.setFixedSize(14, 14)
         self._status.addPermanentWidget(self._game_status_icon)
-        self._game_status_label = QLabel('未配置游戏目录')
+        self._game_status_label = QLabel(_('未配置游戏目录'))
         self._game_status_label.setStyleSheet('color:#f39c12; font-size:9px; padding:0 6px;')
-        self._game_status_label.setToolTip('游戏目录加载状态。前往 工具→设置 配置游戏目录。')
+        self._game_status_label.setToolTip(_('游戏目录加载状态。前往 工具→设置 配置游戏目录。'))
         self._status.addPermanentWidget(self._game_status_label)
 
         self._mod_status_icon = QLabel()
@@ -743,7 +747,7 @@ class MainWindow(QMainWindow):
         self._status.addPermanentWidget(self._mod_status_label)
 
         # 加载取消按钮（仅在资源加载期间显示）
-        self._cancel_load_btn = QPushButton('取消加载')
+        self._cancel_load_btn = QPushButton(_('取消加载'))
         self._cancel_load_btn.setIcon(QIcon(IconProvider.pixmap('close', 10, '#e74c3c')))
         self._cancel_load_btn.setFixedHeight(18)
         self._cancel_load_btn.setStyleSheet(
@@ -755,7 +759,7 @@ class MainWindow(QMainWindow):
         self._cancel_load_btn.clicked.connect(self._cancel_loading)
         self._status.addPermanentWidget(self._cancel_load_btn)
 
-        self._status.showMessage('就绪。请打开模组目录或 .gui 文件开始编辑。')
+        self._status.showMessage(_('就绪。请打开模组目录或 .gui 文件开始编辑。'))
 
     def _update_game_status_indicator(self):
         """更新状态栏中的游戏目录状态指示器。"""
@@ -763,19 +767,19 @@ class MainWindow(QMainWindow):
             self._game_status_icon.setPixmap(
                 IconProvider.pixmap('circle-filled', 10, '#2ecc71'))
             self._game_status_label.setText(
-                f'游戏已加载 ({self._rm.sprite_count} 精灵图)')
+                _('游戏已加载 (') + str(self._rm.sprite_count) + _(' 精灵图)'))
             self._game_status_label.setStyleSheet(
                 'color:#2ecc71; font-size:9px; padding:0 6px;')
         elif self._rm.game_dir:
             self._game_status_icon.setPixmap(
                 IconProvider.pixmap('circle-filled', 10, '#f39c12'))
-            self._game_status_label.setText('游戏目录已配置')
+            self._game_status_label.setText(_('游戏目录已配置'))
             self._game_status_label.setStyleSheet(
                 'color:#f39c12; font-size:9px; padding:0 6px;')
         else:
             self._game_status_icon.setPixmap(
                 IconProvider.pixmap('circle-empty', 10, '#e74c3c'))
-            self._game_status_label.setText('未配置游戏目录')
+            self._game_status_label.setText(_('未配置游戏目录'))
             self._game_status_label.setStyleSheet(
                 'color:#e74c3c; font-size:9px; padding:0 6px;')
 
@@ -786,7 +790,7 @@ class MainWindow(QMainWindow):
             self._mod_status_icon.setPixmap(
                 IconProvider.pixmap('circle-filled', 10, '#3498db'))
             self._mod_status_icon.setVisible(True)
-            self._mod_status_label.setText(f'模组: {mod_name}')
+            self._mod_status_label.setText(_('模组: ') + mod_name)
             self._mod_status_label.setToolTip(self._mod_dir)
         else:
             self._mod_status_icon.setVisible(False)
@@ -801,6 +805,7 @@ class MainWindow(QMainWindow):
         self._canvas.cursor_pos_changed.connect(self._on_cursor_pos)
 
         self._props_panel.property_changed.connect(self._on_property_edited)
+        self._props_panel.widget_renamed.connect(self._on_widget_renamed)
         self._widget_lib.add_widget_requested.connect(self._add_widget_from_library)
         self._sprite_lib.sprite_selected.connect(self._assign_sprite)
         self._file_browser.open_file_requested.connect(self._open_gui_file)
@@ -850,14 +855,14 @@ class MainWindow(QMainWindow):
                 extra_dirs.append(p)
 
         if not game_dir:
-            self._status.showMessage('未配置游戏目录。请前往 工具→设置 进行配置。')
+            self._status.showMessage(_('未配置游戏目录。请前往 工具→设置 进行配置。'))
             self._update_game_status_indicator()
             self._update_mod_status_indicator()
             return
 
         # Disable actions that depend on resources being loaded
         self._set_loading_state(True)
-        self._status.showMessage('正在后台加载资源，请稍候...')
+        self._status.showMessage(_('正在后台加载资源，请稍候...'))
 
         self._cancel_load_btn.setEnabled(True)
         self._res_loader = _ResourceLoaderThread(
@@ -883,7 +888,7 @@ class MainWindow(QMainWindow):
         if loading:
             self._game_status_icon.setPixmap(
                 IconProvider.pixmap('loading', 10, '#f39c12'))
-            self._game_status_label.setText('资源加载中...')
+            self._game_status_label.setText(_('资源加载中...'))
             self._game_status_label.setStyleSheet('color:#f39c12; font-size:9px; padding:0 6px;')
 
     def _cancel_loading(self):
@@ -891,7 +896,7 @@ class MainWindow(QMainWindow):
         if self._res_loader and self._res_loader.isRunning():
             _log.info("用户点击取消加载")
             self._res_loader.cancel()
-            self._status.showMessage('正在取消加载，请稍候...')
+            self._status.showMessage(_('正在取消加载，请稍候...'))
             self._cancel_load_btn.setEnabled(False)
         else:
             _log.warning("取消加载：加载线程不在运行状态")
@@ -913,7 +918,7 @@ class MainWindow(QMainWindow):
             self._be_editor.set_mod_dir(last_mod)
 
         self._status.showMessage(
-            f'已加载 {self._rm.sprite_count} 个精灵图，{self._rm.loc_count} 条本地化。'
+            _('已加载 ') + str(self._rm.sprite_count) + _(' 个精灵图，') + str(self._rm.loc_count) + _(' 条本地化。')
         )
         _log.info("资源加载完成: %d 精灵图 / %d 本地化", self._rm.sprite_count, self._rm.loc_count)
         self._update_game_status_indicator()
@@ -922,7 +927,7 @@ class MainWindow(QMainWindow):
     def _on_resources_error(self, msg: str):
         """Called on the GUI thread when _ResourceLoaderThread encounters an error."""
         self._set_loading_state(False)
-        self._status.showMessage(f'资源加载出错: {msg}')
+        self._status.showMessage(_('资源加载出错: ') + msg)
         self._update_game_status_indicator()
         self._update_mod_status_indicator()
 
@@ -934,7 +939,7 @@ class MainWindow(QMainWindow):
         # 清除 last_mod_dir，避免下次启动再次自动加载被取消的模组
         self._settings.last_mod_dir = ''
         self._mod_dir = ''
-        self._status.showMessage('已取消加载。资源仅部分加载，精灵图和本地化数据可能不完整。')
+        self._status.showMessage(_('已取消加载。资源仅部分加载，精灵图和本地化数据可能不完整。'))
         self._update_game_status_indicator()
         self._update_mod_status_indicator()
 
@@ -958,9 +963,9 @@ class MainWindow(QMainWindow):
 
     def _open_file(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, '打开 GUI 文件',
+            self, _('打开 GUI 文件'),
             self._settings.get('last_open_dir', ''),
-            'GUI 文件 (*.gui *.guicore);;所有文件 (*.*)'
+            _('GUI 文件 (*.gui *.guicore);;所有文件 (*.*)')
         )
         if path:
             self._settings.set('last_open_dir', os.path.dirname(path))
@@ -968,7 +973,7 @@ class MainWindow(QMainWindow):
 
     def _open_gui_file(self, path: str):
         if not os.path.isfile(path):
-            QMessageBox.warning(self, '文件未找到', f'文件不存在:\n{path}')
+            QMessageBox.warning(self, _('文件未找到'), _('文件不存在:\n') + path)
             return
 
         file_size = os.path.getsize(path)
@@ -980,11 +985,11 @@ class MainWindow(QMainWindow):
                 doc = parse_gui_file(path)
                 self._finish_open_gui_file(doc, path)
             except Exception as e:
-                QMessageBox.critical(self, '错误', f'打开文件失败:\n{e}')
+                QMessageBox.critical(self, _('错误'), _('打开文件失败:\n') + str(e))
 
     def _open_gui_file_async(self, path: str):
-        progress = QProgressDialog(f'正在加载 {os.path.basename(path)}...', '取消', 0, 0, self)
-        progress.setWindowTitle('打开大文件')
+        progress = QProgressDialog(_('正在加载 ') + os.path.basename(path) + '...', _('取消'), 0, 0, self)
+        progress.setWindowTitle(_('打开大文件'))
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.show()
@@ -998,7 +1003,7 @@ class MainWindow(QMainWindow):
 
         def on_error(msg):
             progress.close()
-            QMessageBox.critical(self, '错误', f'打开文件失败:\n{msg}')
+            QMessageBox.critical(self, _('错误'), _('打开文件失败:\n') + msg)
 
         def on_cancelled():
             if hasattr(self, '_load_thread'):
@@ -1016,12 +1021,12 @@ class MainWindow(QMainWindow):
         self._update_recent_menu()
         total = sum(1 for _ in doc.all_widgets())
         self._status.showMessage(
-            f'已打开: {os.path.basename(path)}  ({total} 个控件)'
+            _('已打开: ') + os.path.basename(path) + _('  (') + str(total) + _(' 个控件)')
         )
 
     def _open_mod_dir(self):
         path = QFileDialog.getExistingDirectory(
-            self, '打开模组目录',
+            self, _('打开模组目录'),
             self._settings.get('last_open_dir', '')
         )
         if path:
@@ -1043,7 +1048,7 @@ class MainWindow(QMainWindow):
 
         self._set_loading_state(True)
         self._cancel_load_btn.setEnabled(True)
-        self._status.showMessage(f'正在后台加载模组: {os.path.basename(path)} ...')
+        self._status.showMessage(_('正在后台加载模组: ') + os.path.basename(path) + ' ...')
 
         self._res_loader = _ResourceLoaderThread(
             self._rm, '',   # game_dir already loaded; skip it
@@ -1073,8 +1078,8 @@ class MainWindow(QMainWindow):
         self._be_editor.set_mod_dir(path)
         self._update_language_combo()
         self._status.showMessage(
-            f'模组已加载: {os.path.basename(path)}  '
-            f'({self._rm.sprite_count} 精灵图 / {self._rm.loc_count} 本地化)'
+            _('模组已加载: ') + os.path.basename(path) + '  ('
+            + str(self._rm.sprite_count) + _(' 精灵图 / ') + str(self._rm.loc_count) + _(' 本地化)')
         )
         _log.info("模组加载完成: %s — %d 精灵图 / %d 本地化", path,
                   self._rm.sprite_count, self._rm.loc_count)
@@ -1096,8 +1101,8 @@ class MainWindow(QMainWindow):
             self._vgroup_manager = VirtualGroupManager()
         self._vgroup_panel.set_doc(doc, self._vgroup_manager)
         self._warnings_panel.set_doc(doc)
-        fname = os.path.basename(doc.file_path) if doc.file_path else '未命名'
-        self.setWindowTitle(f'群星 GUI 编辑器 — {fname}')
+        fname = os.path.basename(doc.file_path) if doc.file_path else _('未命名')
+        self.setWindowTitle(_('群星 GUI 编辑器 — ') + fname)
         self._props_panel.set_node(None)
         # Populate GUI selector bar
         all_gui_names = self._get_all_gui_names(doc)
@@ -1129,9 +1134,9 @@ class MainWindow(QMainWindow):
         self._gui_selector.blockSignals(True)
         self._gui_selector.clear()
         if not gui_names:
-            self._gui_selector.addItem('（无顶层 GUI）', None)
+            self._gui_selector.addItem(_('（无顶层 GUI）'), None)
         elif len(gui_names) > 1:
-            self._gui_selector.addItem(f'全部 ({len(gui_names)} 个 GUI)', '__ALL__')
+            self._gui_selector.addItem(_('全部 (') + str(len(gui_names)) + _(' 个 GUI)'), '__ALL__')
         for name in gui_names:
             self._gui_selector.addItem(name, name)
         self._gui_selector.blockSignals(False)
@@ -1177,11 +1182,10 @@ class MainWindow(QMainWindow):
         self._canvas.gui_scene.set_event_context(event_info)
         if event_info:
             self._status.showMessage(
-                f'事件上下文已应用: {event_info.id}  '
-                f'(Room: {event_info.room or "无"})'
+                _('事件上下文已应用: ') + event_info.id + '  (Room: ' + (event_info.room or _('无')) + ')'
             )
         else:
-            self._status.showMessage('已清除事件上下文。')
+            self._status.showMessage(_('已清除事件上下文。'))
 
     def _save(self):
         if not self._current_doc:
@@ -1193,10 +1197,10 @@ class MainWindow(QMainWindow):
             save_document(self._current_doc)
             self._vgroup_manager.save()  # also persist virtual groups
             self._saved_doc_copy = copy.deepcopy(self._current_doc)
-            self.setWindowTitle(f'群星 GUI 编辑器 — {os.path.basename(self._current_doc.file_path)}')
-            self._status.showMessage(f'已保存: {self._current_doc.file_path}')
+            self.setWindowTitle(_('群星 GUI 编辑器 — ') + os.path.basename(self._current_doc.file_path))
+            self._status.showMessage(_('已保存: ') + self._current_doc.file_path)
         except Exception as e:
-            QMessageBox.critical(self, '保存错误', str(e))
+            QMessageBox.critical(self, _('保存错误'), str(e))
 
     def _save_as(self):
         if not self._current_doc:
@@ -1204,18 +1208,18 @@ class MainWindow(QMainWindow):
         default = self._current_doc.file_path or os.path.join(
             self._mod_dir, 'interface', 'custom_gui.gui'
         )
-        path, _ = QFileDialog.getSaveFileName(self, '另存为', default,
-                                               'GUI 文件 (*.gui);;所有文件 (*.*)')
+        path, _ = QFileDialog.getSaveFileName(self, _('另存为'), default,
+                                               _('GUI 文件 (*.gui);;所有文件 (*.*)'))
         if path:
             try:
                 save_document(self._current_doc, path)
                 self._saved_doc_copy = copy.deepcopy(self._current_doc)
                 self._settings.add_recent_file(path)
                 self._update_recent_menu()
-                self.setWindowTitle(f'群星 GUI 编辑器 — {os.path.basename(path)}')
-                self._status.showMessage(f'已另存为: {path}')
+                self.setWindowTitle(_('群星 GUI 编辑器 — ') + os.path.basename(path))
+                self._status.showMessage(_('已另存为: ') + path)
             except Exception as e:
-                QMessageBox.critical(self, '保存错误', str(e))
+                QMessageBox.critical(self, _('保存错误'), str(e))
 
     def _auto_save(self):
         """Auto-save to a temp file."""
@@ -1244,13 +1248,13 @@ class MainWindow(QMainWindow):
     def _undo(self):
         desc = self._undo_stack.undo()
         if desc:
-            self._status.showMessage(f'已撤销: {desc}')
+            self._status.showMessage(_('已撤销: ') + desc)
             self._refresh_after_undo()
 
     def _redo(self):
         desc = self._undo_stack.redo()
         if desc:
-            self._status.showMessage(f'已重做: {desc}')
+            self._status.showMessage(_('已重做: ') + desc)
             self._refresh_after_undo()
 
     def _refresh_after_undo(self):
@@ -1270,9 +1274,9 @@ class MainWindow(QMainWindow):
         self._tb_undo.setEnabled(can_u)
         self._tb_redo.setEnabled(can_r)
         self._act_undo.setText(
-            f'撤销: {self._undo_stack.undo_description()}' if can_u else '撤销')
+            _('撤销: ') + self._undo_stack.undo_description() if can_u else _('撤销'))
         self._act_redo.setText(
-            f'重做: {self._undo_stack.redo_description()}' if can_r else '重做')
+            _('重做: ') + self._undo_stack.redo_description() if can_r else _('重做'))
 
     # ------------------------------------------------------------------
     # Widget operations
@@ -1300,7 +1304,7 @@ class MainWindow(QMainWindow):
             if center:
                 scene_pos = center.mapToScene(QPointF(pw / 2, ph / 2))
             else:
-                scene_pos = QPointF(cw / 2, ch / 2)
+                scene_pos = self._canvas.viewport_center_scene()
             node = self._canvas.gui_scene.add_widget(widget_type, scene_pos, parent_node, name=name)
         else:
             node = self._canvas.add_widget_at_center(widget_type, name)
@@ -1328,32 +1332,47 @@ class MainWindow(QMainWindow):
     def _reset_all_changes(self):
         """Reset the document to the last saved state."""
         if not self._saved_doc_copy:
-            QMessageBox.information(self, '无法重置', '没有已保存的状态可以重置。')
+            QMessageBox.information(self, _('无法重置'), _('没有已保存的状态可以重置。'))
             return
         reply = QMessageBox.warning(
-            self, '重置所有修改',
-            '确定要丢弃所有未保存的修改并恢复到上次保存的状态吗？\n此操作无法撤销。',
+            self, _('重置所有修改'),
+            _('确定要丢弃所有未保存的修改并恢复到上次保存的状态吗？\n此操作无法撤销。'),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
         )
         if reply == QMessageBox.StandardButton.Yes:
             restored = copy.deepcopy(self._saved_doc_copy)
             self._load_document(restored)
             self._undo_stack.clear()
-            self._status.showMessage('已重置所有修改。')
+            self._status.showMessage(_('已重置所有修改。'))
 
     def _save_preset(self):
-        node = self._canvas.gui_scene.get_selected_node()
-        if not node:
-            QMessageBox.information(self, '无选中控件', '请先选中一个控件。')
+        nodes = self._canvas.gui_scene.get_selected_nodes()
+        # 按文档顺序排序，确保预设恢复时 Z 轴顺序与原始一致
+        nodes = sorted(nodes, key=self._canvas.gui_scene._node_doc_index)
+        if not nodes:
+            QMessageBox.information(self, _('无选中控件'), _('请先选中至少一个控件。'))
             return
+        # 默认预设名：单控件用控件名，多控件用第一个控件名
+        default_name = nodes[0].name or nodes[0].widget_type
         name, ok = QInputDialog.getText(
-            self, '保存预设', '输入预设名称:',
-            text=node.name or node.widget_type
+            self, _('保存预设'), _('输入预设名称:'), text=default_name
         )
-        if ok and name:
-            code = write_widget_to_string(node)
-            self._preset_lib.add_preset(name, code)
-            self._status.showMessage(f'预设已保存: {name}')
+        if not ok or not name:
+            return
+        # 名称冲突处理
+        if self._preset_lib.preset_exists(name):
+            reply = QMessageBox.question(
+                self, _('预设已存在'),
+                _('预设 "') + name + _('" 已存在，是否覆盖？'),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        # 序列化所有选中控件
+        code_parts = [write_widget_to_string(n) for n in nodes]
+        code = '\n'.join(code_parts)
+        self._preset_lib.add_preset(name, code, widget_count=len(nodes))
+        self._status.showMessage(_('预设已保存: ') + name + (f'  ({len(nodes)} 个控件)' if len(nodes) > 1 else ''))
 
     def _insert_preset(self, name: str):
         if not self._current_doc:
@@ -1363,26 +1382,47 @@ class MainWindow(QMainWindow):
         if not code:
             return
         try:
+            from ..core.gui_model import compute_widget_topleft, make_names_unique
+            from PySide6.QtCore import QPointF
             preset_doc = parse_gui_text(code)
+            existing_names = {w.name for w in self._current_doc.all_widgets()}
+            settings = AppSettings.instance()
+            pw, ph = settings.canvas_size
+            rm = ResourceManager.instance()
+
+            # 预先计算每个 root 节点的场景位置，再整体平移到视窗中心
+            nodes_and_positions = []
             for node in preset_doc.roots:
-                self._current_doc.roots.append(node)
-                settings = AppSettings.instance()
-                pw, ph = settings.canvas_size
-                rm = ResourceManager.instance()
+                make_names_unique(node, existing_names)
                 dw, dh = self._canvas.gui_scene._get_display_size(node, rm)
-                from ..core.gui_model import compute_widget_topleft
                 px, py = node.position
                 tl_x, tl_y = compute_widget_topleft(pw, ph, dw, dh,
                                                       node.orientation, node.origo, px, py)
-                from .widget_items import GUIWidgetItem
+                nodes_and_positions.append((node, px, py, tl_x, tl_y))
+
+            if nodes_and_positions:
+                # 计算预设整体中心，偏移到当前视窗中心
+                avg_x = sum(tp[3] for tp in nodes_and_positions) / len(nodes_and_positions)
+                avg_y = sum(tp[4] for tp in nodes_and_positions) / len(nodes_and_positions)
+                vc = self._canvas.viewport_center_scene()
+                dx = round(vc.x() - avg_x)
+                dy = round(vc.y() - avg_y)
+            else:
+                dx, dy = 0, 0
+
+            from .widget_items import GUIWidgetItem
+            for node, px, py, tl_x, tl_y in nodes_and_positions:
+                # 更新 node.position 使保存时坐标正确
+                node.position = (px + dx, py + dy)
+                self._current_doc.roots.append(node)
                 new_item = GUIWidgetItem(node)
-                new_item.setPos(tl_x, tl_y)
+                new_item.setPos(tl_x + dx, tl_y + dy)
                 self._canvas.gui_scene.addItem(new_item)
                 self._canvas.gui_scene._node_to_item[id(node)] = new_item
             self._layer_panel.populate(self._current_doc)
             self._code_view.schedule_update()
         except Exception as e:
-            QMessageBox.warning(self, '错误', f'插入预设失败: {e}')
+            QMessageBox.warning(self, _('错误'), _('插入预设失败: ') + str(e))
 
     # ------------------------------------------------------------------
     # Canvas / property sync
@@ -1398,7 +1438,7 @@ class MainWindow(QMainWindow):
                 # Multi-select
                 count = len(node_or_list)
                 self._props_panel.set_node(None)
-                self._sel_count_label.setText(f'已选中 {count} 个控件')
+                self._sel_count_label.setText(_('已选中 ') + str(count) + _(' 个控件'))
                 self._pos_label.setText('')
                 self._sprite_label.setText('')
                 # Highlight first in code view
@@ -1418,8 +1458,8 @@ class MainWindow(QMainWindow):
                 if sprite:
                     rm = ResourceManager.instance()
                     mode = rm.get_widget_render_mode(node)
-                    type_str = '9块' if mode == 'nine_patch' else '固定'
-                    info_parts.append(f'精灵[{type_str}]: {sprite}')
+                    type_str = _('9块') if mode == 'nine_patch' else _('固定')
+                    info_parts.append(_('精灵[') + type_str + _(']: ') + sprite)
                 if tooltip:
                     rm = ResourceManager.instance()
                     info_parts.append(f'Tip: {rm.get_loc(tooltip)[:20]}')
@@ -1444,6 +1484,13 @@ class MainWindow(QMainWindow):
             w, h = self._status_display_wh(node)
             self._pos_label.setText(f'x:{x}  y:{y}  w:{w}  h:{h}  [{node.widget_type}]')
             self._layer_panel.refresh_item(node)
+
+    def _on_widget_renamed(self, old_name: str, new_name: str):
+        """控件被重命名 → 同步更新所有虚拟组中的控件名引用。"""
+        if self._vgroup_manager:
+            self._vgroup_manager.rename_widget(old_name, new_name)
+        if hasattr(self, '_vgroup_panel'):
+            self._vgroup_panel.refresh()
 
     def _on_property_edited(self, node: WidgetNode):
         # Push to undo stack
@@ -1488,7 +1535,7 @@ class MainWindow(QMainWindow):
         all_gui_names = self._get_all_gui_names(self._current_doc)
         self._populate_gui_selector(all_gui_names)
         self._event_panel.set_gui_names(all_gui_names)
-        self._status.showMessage('画布已刷新。')
+        self._status.showMessage(_('画布已刷新。'))
 
     def _update_language_combo(self):
         """Refresh the language selector based on available languages."""
@@ -1507,7 +1554,7 @@ class MainWindow(QMainWindow):
         self._lang_combo.blockSignals(True)
         self._lang_combo.clear()
         if not langs:
-            self._lang_combo.addItem('（未检测到语言）', '')
+            self._lang_combo.addItem(_('（未检测到语言）'), '')
         else:
             for lang in langs:
                 display = _LANG_DISPLAY.get(lang, lang.replace('l_', '').capitalize())
@@ -1530,14 +1577,20 @@ class MainWindow(QMainWindow):
         if self._current_doc:
             self._canvas.gui_scene.update()
             self._canvas.viewport().update()
-        self._status.showMessage(f'本地化已切换: {lang}')
+        self._status.showMessage(_('本地化已切换: ') + lang)
 
     def _on_document_modified(self):
         if self._current_doc:
-            fname = os.path.basename(self._current_doc.file_path or '未命名')
-            self.setWindowTitle(f'群星 GUI 编辑器 — {fname} *')
+            fname = os.path.basename(self._current_doc.file_path or _('未命名'))
+            self.setWindowTitle(_('群星 GUI 编辑器 — ') + fname + ' *')
         self._code_view.schedule_update()
         self._warnings_panel.refresh()
+        # 清理组中已被删除的控件名，然后刷新组面板
+        if self._current_doc and self._vgroup_manager:
+            valid = {w.name for w in self._current_doc.all_widgets()}
+            self._vgroup_manager.clean_stale_names(valid)
+        if hasattr(self, '_vgroup_panel'):
+            self._vgroup_panel.refresh()
         self._autosave_timer.start()
 
     def _assign_sprite(self, sprite_name: str):
@@ -1555,15 +1608,15 @@ class MainWindow(QMainWindow):
             bg.setdefault('name', 'background')
             bg['quadTextureSprite'] = sprite_name
             node.properties['background'] = bg
-            self._status.showMessage(f'已设置容器背景精灵图: {sprite_name}')
+            self._status.showMessage(_('已设置容器背景精灵图: ') + sprite_name)
         elif info and info.is_scalable():
             node.properties.pop('spriteType', None)
             node.properties['quadTextureSprite'] = sprite_name
-            self._status.showMessage(f'已分配精灵图 (可拉伸): {sprite_name}')
+            self._status.showMessage(_('已分配精灵图 (可拉伸): ') + sprite_name)
         else:
             node.properties.pop('quadTextureSprite', None)
             node.properties['spriteType'] = sprite_name
-            self._status.showMessage(f'已分配精灵图 (固定): {sprite_name}')
+            self._status.showMessage(_('已分配精灵图 (固定): ') + sprite_name)
         self._props_panel.refresh_from_node(node)
         self._canvas.gui_scene.refresh_item(node)
 
@@ -1575,9 +1628,9 @@ class MainWindow(QMainWindow):
             new_doc.modified = True
             self._load_document(new_doc)
             self._undo_stack.clear()
-            self._status.showMessage('代码已应用。')
+            self._status.showMessage(_('代码已应用。'))
         except Exception as e:
-            QMessageBox.warning(self, '解析错误', f'解析代码失败:\n{e}')
+            QMessageBox.warning(self, _('解析错误'), _('解析代码失败:\n') + str(e))
 
     # ------------------------------------------------------------------
     # Layer panel events
@@ -1638,7 +1691,7 @@ class MainWindow(QMainWindow):
         self._canvas.load_document(self._current_doc)
         self._current_doc.modified = True
         self._code_view.schedule_update()
-        self._status.showMessage('图层结构已更新。')
+        self._status.showMessage(_('图层结构已更新。'))
 
     def _on_node_position_changed(self, node: WidgetNode):
         """Called when a widget is dragged/resized in the canvas.
@@ -1655,7 +1708,7 @@ class MainWindow(QMainWindow):
         if not self._current_doc:
             return
         names = [w.name for w in self._current_doc.all_widgets() if w.name]
-        name, ok = QInputDialog.getItem(self, '查找控件', '控件名称:', sorted(names), editable=True)
+        name, ok = QInputDialog.getItem(self, _('查找控件'), _('控件名称:'), sorted(names), editable=True)
         if ok and name:
             node = self._current_doc.find_by_name(name)
             if node:
@@ -1664,9 +1717,9 @@ class MainWindow(QMainWindow):
                     self._canvas.gui_scene.clearSelection()
                     item.setSelected(True)
                     self._canvas.centerOn(item)
-                    self._status.showMessage(f'已定位控件: {name}')
+                    self._status.showMessage(_('已定位控件: ') + name)
             else:
-                self._status.showMessage(f'未找到控件: {name}')
+                self._status.showMessage(_('未找到控件: ') + name)
 
     def _on_vgroup_visibility_changed(self):
         """Apply virtual group visibility to canvas items."""
@@ -1689,28 +1742,28 @@ class MainWindow(QMainWindow):
 
     def _add_workspace_folder(self):
         path = QFileDialog.getExistingDirectory(
-            self, '添加文件夹到工作区',
+            self, _('添加文件夹到工作区'),
             self._settings.get('last_open_dir', '')
         )
         if path:
             name, ok = QInputDialog.getText(
-                self, '工作区文件夹名称',
-                '为此文件夹指定一个名称（可选）:',
+                self, _('工作区文件夹名称'),
+                _('为此文件夹指定一个名称（可选）:'),
                 text=os.path.basename(path)
             )
             if ok:
                 self._settings.add_workspace_folder(path, name)
                 self._load_mod_dir(path)
-                self._status.showMessage(f'已添加工作区文件夹: {name or path}')
+                self._status.showMessage(_('已添加工作区文件夹: ') + (name or path))
 
     def _manage_workspace_folders(self):
         """Show a dialog to view/remove workspace folders."""
         from PySide6.QtWidgets import QDialog, QListWidget, QListWidgetItem, QDialogButtonBox
         dlg = QDialog(self)
-        dlg.setWindowTitle('管理工作区文件夹')
+        dlg.setWindowTitle(_('管理工作区文件夹'))
         dlg.resize(540, 360)
         layout = QVBoxLayout(dlg)
-        lbl = QLabel('工作区文件夹（用于自动加载资源）:')
+        lbl = QLabel(_('工作区文件夹（用于自动加载资源）:'))
         layout.addWidget(lbl)
         lst = QListWidget()
         folders = self._settings.workspace_folders
@@ -1720,8 +1773,8 @@ class MainWindow(QMainWindow):
             lst.addItem(item)
         layout.addWidget(lst)
         btn_row = QHBoxLayout()
-        add_btn = QPushButton('添加...')
-        remove_btn = QPushButton('删除选中')
+        add_btn = QPushButton(_('添加...'))
+        remove_btn = QPushButton(_('删除选中'))
         btn_row.addWidget(add_btn)
         btn_row.addWidget(remove_btn)
         layout.addLayout(btn_row)
@@ -1739,7 +1792,7 @@ class MainWindow(QMainWindow):
                 p = cur.data(Qt.ItemDataRole.UserRole)
                 self._settings.remove_workspace_folder(p)
                 lst.takeItem(lst.row(cur))
-                self._status.showMessage(f'已移除工作区文件夹: {p}')
+                self._status.showMessage(_('已移除工作区文件夹: ') + p)
 
         add_btn.clicked.connect(do_add)
         remove_btn.clicked.connect(do_remove)
@@ -1749,7 +1802,7 @@ class MainWindow(QMainWindow):
         self._ws_folders_menu.clear()
         folders = self._settings.workspace_folders
         if not folders:
-            self._ws_folders_menu.addAction('（无工作区文件夹）').setEnabled(False)
+            self._ws_folders_menu.addAction(_('（无工作区文件夹）')).setEnabled(False)
             return
         for wf in folders:
             path = wf.get('path', '')
@@ -1813,13 +1866,13 @@ class MainWindow(QMainWindow):
         mode = self._canvas.toggle_preview_mode()
         self._act_preview.setChecked(mode)
         self._tb_preview.setChecked(mode)
-        self._status.showMessage('预览模式: ' + ('开启' if mode else '关闭'))
+        self._status.showMessage(_('预览模式: ') + (_('开启') if mode else _('关闭')))
 
     def _toggle_editor_scrollbars(self):
         self._settings.show_editor_scrollbars = self._act_editor_scrollbars.isChecked()
         self._canvas.gui_scene.sync_editor_scrollbar_visibility()
         self._status.showMessage(
-            '编辑器滑条: ' + ('显示' if self._settings.show_editor_scrollbars else '隐藏'))
+            _('编辑器滑条: ') + (_('显示') if self._settings.show_editor_scrollbars else _('隐藏')))
 
     def _reload_sprites(self):
         self._rm.clear_cache()
@@ -1829,7 +1882,7 @@ class MainWindow(QMainWindow):
                 if isinstance(item, GUIWidgetItem):
                     item.refresh()
         self._sprite_lib.populate()
-        self._status.showMessage('精灵图已重新加载。')
+        self._status.showMessage(_('精灵图已重新加载。'))
 
     def _manual_refresh_resources(self):
         """
@@ -1837,7 +1890,7 @@ class MainWindow(QMainWindow):
         reload game/mod/extra-mod resources and update visible editor state.
         """
         try:
-            self._status.showMessage('正在手动刷新资源...')
+            self._status.showMessage(_('正在手动刷新资源...'))
             QApplication.processEvents()
             self._rm.reload_all()
             self._sprite_lib.populate()
@@ -1854,10 +1907,10 @@ class MainWindow(QMainWindow):
                 self._code_view.schedule_update()
 
             self._status.showMessage(
-                f'资源刷新完成: {self._rm.sprite_count} 个精灵 / {self._rm.loc_count} 条本地化'
+                _('资源刷新完成: ') + str(self._rm.sprite_count) + _(' 个精灵 / ') + str(self._rm.loc_count) + _(' 条本地化')
             )
         except Exception as e:
-            QMessageBox.warning(self, '刷新失败', str(e))
+            QMessageBox.warning(self, _('刷新失败'), str(e))
 
     def _open_settings(self):
         dlg = SettingsDialog(self)
@@ -1895,16 +1948,16 @@ class MainWindow(QMainWindow):
     def _validate_gui(self):
         """Validate the current GUI document for common issues."""
         if not self._current_doc:
-            QMessageBox.information(self, '验证', '没有打开的文件。')
+            QMessageBox.information(self, _('验证'), _('没有打开的文件。'))
             return
         issues = []
         rm = ResourceManager.instance()
         for widget in self._current_doc.all_widgets():
             sprite = widget.get_sprite_name()
             if sprite and not rm.get_sprite(sprite):
-                issues.append(f'控件 "{widget.name}": 精灵图 "{sprite}" 未在 GFX 中注册')
+                issues.append(_('控件 "') + widget.name + _('": 精灵图 "') + sprite + _('" 未在 GFX 中注册'))
             if not widget.name:
-                issues.append(f'控件 {widget.widget_type}: 缺少 name 属性 (可能导致游戏崩溃)')
+                issues.append(_('控件 ') + widget.widget_type + _(': 缺少 name 属性 (可能导致游戏崩溃)'))
             # Duplicate names in same parent
         # Check name uniqueness
         seen_names = {}
@@ -1912,17 +1965,17 @@ class MainWindow(QMainWindow):
             parent_id = id(widget.parent) if widget.parent else 0
             key = (parent_id, widget.name)
             if widget.name and key in seen_names:
-                issues.append(f'名称重复: "{widget.name}" (同级控件中名称必须唯一)')
+                issues.append(_('名称重复: "') + widget.name + _('" (同级控件中名称必须唯一)'))
             elif widget.name:
                 seen_names[key] = widget
 
         if issues:
             from PySide6.QtWidgets import QDialog, QTextEdit, QDialogButtonBox, QVBoxLayout
             dlg = QDialog(self)
-            dlg.setWindowTitle('GUI 验证结果')
+            dlg.setWindowTitle(_('GUI 验证结果'))
             dlg.setMinimumSize(500, 350)
             layout = QVBoxLayout(dlg)
-            layout.addWidget(QLabel(f'发现 {len(issues)} 个问题:'))
+            layout.addWidget(QLabel(_('发现 ') + str(len(issues)) + _(' 个问题:')))
             te = QTextEdit()
             te.setReadOnly(True)
             te.setPlainText('\n'.join(f'• {i}' for i in issues))
@@ -1932,7 +1985,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(btns)
             dlg.exec()
         else:
-            QMessageBox.information(self, 'GUI 验证', '未发现问题！')
+            QMessageBox.information(self, _('GUI 验证'), _('未发现问题！'))
 
     def _open_be_editor(self):
         """Show the Button Effects editor dock and populate from current mod."""
@@ -1948,13 +2001,13 @@ class MainWindow(QMainWindow):
     def _generate_gfx(self):
         from PySide6.QtWidgets import QDialog, QTextEdit, QDialogButtonBox, QVBoxLayout
         dlg = QDialog(self)
-        dlg.setWindowTitle('生成 .gfx 精灵注册文件')
+        dlg.setWindowTitle(_('生成 .gfx 精灵注册文件'))
         dlg.setMinimumSize(640, 440)
         layout = QVBoxLayout(dlg)
         layout.addWidget(QLabel(
-            '每行格式: 精灵名称|纹理路径|类型|帧数\n'
-            '类型: spriteType / corneredTileSpriteType\n'
-            '例: GFX_my_btn|gfx/interface/buttons/my_btn.dds|spriteType|3'
+            _('每行格式: 精灵名称|纹理路径|类型|帧数\n'
+              '类型: spriteType / corneredTileSpriteType\n'
+              '例: GFX_my_btn|gfx/interface/buttons/my_btn.dds|spriteType|3')
         ))
         editor = QTextEdit()
         editor.setFont(QFont('Consolas', 10))
@@ -1965,7 +2018,7 @@ class MainWindow(QMainWindow):
         preview.setReadOnly(True)
         preview.setFont(QFont('Consolas', 10))
         preview.setStyleSheet('background: #1e1e1e; color: #d4d4d4;')
-        layout.addWidget(QLabel('预览:'))
+        layout.addWidget(QLabel(_('预览:')))
         layout.addWidget(preview)
 
         def _upd():
@@ -1980,23 +2033,23 @@ class MainWindow(QMainWindow):
                     })
             if regs:
                 try: preview.setPlainText(generate_gfx_file(regs))
-                except Exception as e: preview.setPlainText(f'错误: {e}')
+                except Exception as e: preview.setPlainText(_('错误: ') + str(e))
 
         editor.textChanged.connect(_upd)
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Close
         )
-        btns.button(QDialogButtonBox.StandardButton.Save).setText('保存')
-        btns.button(QDialogButtonBox.StandardButton.Close).setText('关闭')
+        btns.button(QDialogButtonBox.StandardButton.Save).setText(_('保存'))
+        btns.button(QDialogButtonBox.StandardButton.Close).setText(_('关闭'))
 
         def _save():
             content = preview.toPlainText()
             if not content: return
             default = os.path.join(self._mod_dir, 'interface', 'sprites.gfx') if self._mod_dir else ''
-            path, _ = QFileDialog.getSaveFileName(dlg, '保存 .gfx', default, 'GFX 文件 (*.gfx);;所有文件 (*.*)')
+            path, _ = QFileDialog.getSaveFileName(dlg, _('保存 .gfx'), default, _('GFX 文件 (*.gfx);;所有文件 (*.*)'))
             if path:
                 with open(path, 'w', encoding='utf-8') as f: f.write(content)
-                self._status.showMessage(f'已保存: {path}')
+                self._status.showMessage(_('已保存: ') + path)
 
         btns.accepted.connect(_save)
         btns.rejected.connect(dlg.reject)
@@ -2011,8 +2064,8 @@ class MainWindow(QMainWindow):
         self._autosave_timer.stop()
         if self._current_doc and self._current_doc.modified:
             reply = QMessageBox.question(
-                self, '未保存的修改',
-                '有未保存的修改，是否在退出前保存？',
+                self, _('未保存的修改'),
+                _('有未保存的修改，是否在退出前保存？'),
                 QMessageBox.StandardButton.Save |
                 QMessageBox.StandardButton.Discard |
                 QMessageBox.StandardButton.Cancel,

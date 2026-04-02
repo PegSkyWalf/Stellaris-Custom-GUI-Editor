@@ -14,6 +14,7 @@ from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPen, QDropEv
 
 from ..core.gui_model import WidgetNode, GUIDocument, WIDGET_COLORS, WIDGET_LABELS
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 from .icon_provider import IconProvider
 
 
@@ -116,7 +117,7 @@ class LayerPanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        header = QLabel('图层')
+        header = QLabel(_('图层'))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
         layout.addWidget(header)
@@ -126,14 +127,14 @@ class LayerPanel(QWidget):
         self._up_btn = QPushButton()
         self._up_btn.setIcon(IconProvider.themed_icon('arrow-up', size=16))
         self._up_btn.setFixedWidth(28)
-        self._up_btn.setToolTip('上移 (在父容器中向前)')
+        self._up_btn.setToolTip(_('上移 (在父容器中向前)'))
         self._up_btn.clicked.connect(lambda: self._move_selection(-1))
         btn_row.addWidget(self._up_btn)
 
         self._down_btn = QPushButton()
         self._down_btn.setIcon(IconProvider.themed_icon('arrow-down', size=16))
         self._down_btn.setFixedWidth(28)
-        self._down_btn.setToolTip('下移 (在父容器中向后)')
+        self._down_btn.setToolTip(_('下移 (在父容器中向后)'))
         self._down_btn.clicked.connect(lambda: self._move_selection(1))
         btn_row.addWidget(self._down_btn)
 
@@ -142,14 +143,14 @@ class LayerPanel(QWidget):
         self._vis_btn = QPushButton()
         self._vis_btn.setIcon(IconProvider.themed_icon('eye', size=16))
         self._vis_btn.setFixedWidth(28)
-        self._vis_btn.setToolTip('切换可见性')
+        self._vis_btn.setToolTip(_('切换可见性'))
         self._vis_btn.clicked.connect(self._toggle_visibility)
         btn_row.addWidget(self._vis_btn)
 
         self._lock_btn = QPushButton()
         self._lock_btn.setIcon(IconProvider.themed_icon('lock', size=16))
         self._lock_btn.setFixedWidth(28)
-        self._lock_btn.setToolTip('切换锁定')
+        self._lock_btn.setToolTip(_('切换锁定'))
         self._lock_btn.clicked.connect(self._toggle_lock)
         btn_row.addWidget(self._lock_btn)
 
@@ -157,7 +158,7 @@ class LayerPanel(QWidget):
 
         # Tree
         self._tree = _LayerTree()
-        self._tree.setHeaderLabels(['名称', '类型', '显示', '锁定'])
+        self._tree.setHeaderLabels([_('名称'), _('类型'), _('显示'), _('锁定')])
         self._tree.setColumnWidth(0, 130)
         self._tree.setColumnWidth(1, 70)
         self._tree.setColumnWidth(2, 30)
@@ -300,16 +301,16 @@ class LayerPanel(QWidget):
             return
         node = item.node
         menu = QMenu(self)
-        menu.addAction('可见' if not item.is_visible else '隐藏',
+        menu.addAction(_('可见') if not item.is_visible else _('隐藏'),
                        self._toggle_visibility)
-        menu.addAction('解锁' if item.is_locked else '锁定',
+        menu.addAction(_('解锁') if item.is_locked else _('锁定'),
                        self._toggle_lock)
         menu.addSeparator()
-        menu.addAction('上移', lambda: self._move_selection(-1))
-        menu.addAction('下移', lambda: self._move_selection(1))
+        menu.addAction(_('上移'), lambda: self._move_selection(-1))
+        menu.addAction(_('下移'), lambda: self._move_selection(1))
         menu.addSeparator()
-        menu.addAction('移到顶层', lambda: self._move_to_end(node, front=True))
-        menu.addAction('移到底层', lambda: self._move_to_end(node, front=False))
+        menu.addAction(_('移到顶层'), lambda: self._move_to_end(node, front=True))
+        menu.addAction(_('移到底层'), lambda: self._move_to_end(node, front=False))
         menu.exec(self._tree.viewport().mapToGlobal(pos))
 
     def _get_selected_layer_item(self) -> Optional[LayerItem]:

@@ -14,6 +14,7 @@ from PySide6.QtGui import QFont, QIcon, QColor
 
 from ..core.resource_manager import ResourceManager, SpriteInfo
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 
 PREVIEW_SIZE = 64
 
@@ -22,12 +23,12 @@ class SpriteListItem(QListWidgetItem):
     def __init__(self, info: SpriteInfo):
         super().__init__(info.name)
         self.sprite_info = info
-        type_str = '可拉伸' if info.is_scalable() else '固定尺寸'
+        type_str = _('可拉伸') if info.is_scalable() else _('固定尺寸')
         self.setToolTip(
-            f'名称: {info.name}\n'
-            f'类型: {info.sprite_type} ({type_str})\n'
-            f'纹理: {info.texture_path}\n'
-            f'帧数: {info.no_of_frames}'
+            _('名称: ') + info.name + '\n' +
+            _('类型: ') + info.sprite_type + ' (' + type_str + ')\n' +
+            _('纹理: ') + info.texture_path + '\n' +
+            _('帧数: ') + str(info.no_of_frames)
         )
 
     def load_icon(self):
@@ -54,14 +55,14 @@ class SpriteLibrary(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        header = QLabel('精灵图库')
+        header = QLabel(_('精灵图库'))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
         layout.addWidget(header)
 
         search_row = QHBoxLayout()
         self._search = QLineEdit()
-        self._search.setPlaceholderText('搜索精灵图名称...')
+        self._search.setPlaceholderText(_('搜索精灵图名称...'))
         self._search.textChanged.connect(self._on_search)
         search_row.addWidget(self._search)
         layout.addLayout(search_row)
@@ -82,7 +83,7 @@ class SpriteLibrary(QWidget):
         preview_layout = QVBoxLayout(preview_widget)
         preview_layout.setContentsMargins(4, 4, 4, 4)
 
-        self._preview_label = QLabel('无预览')
+        self._preview_label = QLabel(_('无预览'))
         self._preview_label.setObjectName('sprite_preview')
         self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setMinimumHeight(80)
@@ -94,14 +95,14 @@ class SpriteLibrary(QWidget):
         self._info_label.setWordWrap(True)
         preview_layout.addWidget(self._info_label)
 
-        self._use_btn = QPushButton('分配给选中控件')
+        self._use_btn = QPushButton(_('分配给选中控件'))
         self._use_btn.clicked.connect(self._on_use_clicked)
         preview_layout.addWidget(self._use_btn)
 
         splitter.addWidget(preview_widget)
         splitter.setSizes([280, 180])
 
-        self._stats = QLabel('未加载精灵图')
+        self._stats = QLabel(_('未加载精灵图'))
         self._stats.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._stats.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(self._stats)
@@ -117,7 +118,7 @@ class SpriteLibrary(QWidget):
                 item.setForeground(QColor(ThemeManager.accent_color()))
             self._list.addItem(item)
             self._all_items.append(item)
-        self._stats.setText(f'共 {len(sprites)} 个精灵图')
+        self._stats.setText(_('共 {} 个精灵图').format(len(sprites)))
         self._icon_load_timer.start(300)
 
     def _load_visible_icons(self):
@@ -135,7 +136,7 @@ class SpriteLibrary(QWidget):
 
     def _on_selection_changed(self, current: QListWidgetItem, _):
         if not isinstance(current, SpriteListItem):
-            self._preview_label.setText('无预览')
+            self._preview_label.setText(_('无预览'))
             self._info_label.clear()
             return
 
@@ -154,13 +155,14 @@ class SpriteLibrary(QWidget):
             self._preview_label.setPixmap(pm)
             self._preview_label.setStyleSheet('background: #2a2a2a; border: 1px solid #444;')
         else:
-            self._preview_label.setText('无法加载')
+            self._preview_label.setText(_('无法加载'))
             self._preview_label.setStyleSheet(f'color: {ThemeManager.muted_color()}; background: #2a2a2a; border: 1px solid #444;')
 
         nw, nh = rm.get_sprite_natural_size(info.name)
-        type_str = '可拉伸 (corneredTile)' if info.is_scalable() else f'固定尺寸 {nw}×{nh}'
+        type_str = _('可拉伸 (corneredTile)') if info.is_scalable() else (_('固定尺寸 ') + f'{nw}×{nh}')
         self._info_label.setText(
-            f'{info.name}\n类型: {type_str}\n帧数: {info.no_of_frames}\n{info.texture_path}'
+            info.name + '\n' + _('类型: ') + type_str + '\n' +
+            _('帧数: ') + str(info.no_of_frames) + '\n' + info.texture_path
         )
         self.sprite_selected.emit(info.name)
 

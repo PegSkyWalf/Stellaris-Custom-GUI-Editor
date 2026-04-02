@@ -49,6 +49,9 @@ _DEFAULTS = {
     'snap_to_centers': True,
     'snap_to_spacing': True,
 
+    # 语言
+    'ui_language': 'zh_CN',    # UI 显示语言，BCP-47 代码
+
     # 高级
     'log_level': 'INFO',
     'first_run': True,         # 控制是否显示首次启动向导

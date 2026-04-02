@@ -14,6 +14,7 @@ from PySide6.QtGui import QFont, QColor
 
 from ..core.resource_manager import ResourceManager
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 from ..core.logger import get_logger
 _log = get_logger('file_browser')
 
@@ -33,13 +34,13 @@ class FileBrowser(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        header = QLabel('文件浏览器')
+        header = QLabel(_('文件浏览器'))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
         layout.addWidget(header)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText('过滤文件...')
+        self._search.setPlaceholderText(_('过滤文件...'))
         self._search.textChanged.connect(self._filter)
         layout.addWidget(self._search)
 
@@ -51,7 +52,7 @@ class FileBrowser(QWidget):
         layout.addWidget(self._tree)
 
         btn_row = QHBoxLayout()
-        self._refresh_btn = QPushButton('刷新')
+        self._refresh_btn = QPushButton(_('刷新'))
         self._refresh_btn.clicked.connect(self.refresh)
         btn_row.addWidget(self._refresh_btn)
         layout.addLayout(btn_row)
@@ -82,7 +83,7 @@ class FileBrowser(QWidget):
         if self._game_dir:
             iface = os.path.join(self._game_dir, 'interface')
             if os.path.isdir(iface):
-                game_root = QTreeWidgetItem(self._tree, ['[D] 原版: interface'])
+                game_root = QTreeWidgetItem(self._tree, [_('[D] 原版: interface')])
                 game_root.setForeground(0, QColor(ThemeManager.muted_color()))
                 self._add_directory_tree(game_root, iface,
                     filter_ext={'.gui', '.gfx'})
@@ -140,12 +141,12 @@ class FileBrowser(QWidget):
         if os.path.isfile(path):
             ext = os.path.splitext(path)[1].lower()
             if ext in ('.gui', '.guicore'):
-                menu.addAction('在编辑器中打开').triggered.connect(
+                menu.addAction(_('在编辑器中打开')).triggered.connect(
                     lambda: self.open_file_requested.emit(path))
-            menu.addAction('在资源管理器中显示').triggered.connect(
+            menu.addAction(_('在资源管理器中显示')).triggered.connect(
                 lambda: os.startfile(os.path.dirname(path)))
         elif os.path.isdir(path):
-            menu.addAction('在资源管理器中打开').triggered.connect(
+            menu.addAction(_('在资源管理器中打开')).triggered.connect(
                 lambda: os.startfile(path))
         menu.exec(self._tree.viewport().mapToGlobal(pos))
 

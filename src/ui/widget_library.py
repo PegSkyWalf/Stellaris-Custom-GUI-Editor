@@ -14,6 +14,7 @@ from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPen, QPalett
 
 from ..core.gui_model import WIDGET_TYPES, WIDGET_LABELS, WIDGET_COLORS, DEFAULT_SIZE
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 
 
 def _make_type_icon(color_str: str, size: int = 22) -> QIcon:
@@ -38,9 +39,9 @@ class WidgetTypeItem(QListWidgetItem):
         color = WIDGET_COLORS.get(widget_type, '#888888')
         self.setIcon(_make_type_icon(color))
         self.setToolTip(
-            f'类型: {widget_type}\n'
-            f'默认尺寸: {DEFAULT_SIZE.get(widget_type, "N/A")}\n'
-            f'双击添加到画布'
+            _('类型: ') + widget_type + '\n' +
+            _('默认尺寸: ') + str(DEFAULT_SIZE.get(widget_type, 'N/A')) + '\n' +
+            _('双击添加到画布')
         )
         self.setData(Qt.ItemDataRole.UserRole, widget_type)
 
@@ -58,12 +59,12 @@ class WidgetLibrary(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        header = QLabel('控件库')
+        header = QLabel(_('控件库'))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
         layout.addWidget(header)
 
-        hint = QLabel('双击添加到画布中心')
+        hint = QLabel(_('双击添加到画布中心'))
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(hint)
@@ -74,7 +75,7 @@ class WidgetLibrary(QWidget):
         self._list.itemDoubleClicked.connect(self._on_double_click)
         layout.addWidget(self._list)
 
-        self._add_btn = QPushButton('添加到画布')
+        self._add_btn = QPushButton(_('添加到画布'))
         self._add_btn.clicked.connect(self._on_add_clicked)
         layout.addWidget(self._add_btn)
 
@@ -92,20 +93,20 @@ class WidgetLibrary(QWidget):
             sep.setForeground(QApplication.palette().color(QPalette.ColorRole.Mid))
             self._list.addItem(sep)
 
-        _sep('容器类型')
+        _sep(_('容器类型'))
         for wt in container_types:
             if wt in WIDGET_TYPES:
                 self._list.addItem(WidgetTypeItem(wt))
-        _sep('按钮/交互')
+        _sep(_('按钮/交互'))
         for wt in button_types:
             if wt in WIDGET_TYPES:
                 self._list.addItem(WidgetTypeItem(wt))
-        _sep('显示类型')
+        _sep(_('显示类型'))
         for wt in display_types:
             if wt in WIDGET_TYPES:
                 self._list.addItem(WidgetTypeItem(wt))
         if other_types:
-            _sep('其它')
+            _sep(_('其它'))
             for wt in other_types:
                 self._list.addItem(WidgetTypeItem(wt))
 
@@ -120,8 +121,8 @@ class WidgetLibrary(QWidget):
 
     def _request_add(self, widget_type: str):
         name, ok = QInputDialog.getText(
-            self, '输入控件名称',
-            f'为新建的 {widget_type} 输入名称:',
+            self, _('输入控件名称'),
+            _('为新建的 {} 输入名称:').format(widget_type),
             text=f'new_{widget_type[:10]}'
         )
         if ok:
@@ -143,12 +144,12 @@ class PresetLibrary(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        header = QLabel('预设库')
+        header = QLabel(_('预设库'))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
         layout.addWidget(header)
 
-        hint = QLabel('保存和复用控件模板')
+        hint = QLabel(_('保存和复用控件模板'))
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(hint)
@@ -158,12 +159,12 @@ class PresetLibrary(QWidget):
         layout.addWidget(self._list)
 
         btn_row = QHBoxLayout()
-        self._save_btn = QPushButton('保存选中为预设')
-        self._save_btn.setToolTip('将当前选中的控件保存为可复用预设')
+        self._save_btn = QPushButton(_('保存选中为预设'))
+        self._save_btn.setToolTip(_('将当前选中的控件保存为可复用预设'))
         self._save_btn.clicked.connect(self.save_preset_requested.emit)
         btn_row.addWidget(self._save_btn)
 
-        self._del_btn = QPushButton('删除')
+        self._del_btn = QPushButton(_('删除'))
         self._del_btn.clicked.connect(self._on_delete)
         btn_row.addWidget(self._del_btn)
         layout.addLayout(btn_row)
@@ -184,24 +185,49 @@ class PresetLibrary(QWidget):
     def _refresh_list(self):
         self._list.clear()
         for name in sorted(self._presets.keys()):
-            item = QListWidgetItem(name)
-            item.setToolTip('双击插入到画布')
+            entry = self._presets[name]
+            if isinstance(entry, dict):
+                count = entry.get('widget_count', 1)
+                code_preview = entry.get('code', '')
+            else:
+                count = 1
+                code_preview = str(entry)
+            # 显示名称 + 控件数量徽章
+            display = name if count <= 1 else f'{name}  [{count} 控件]'
+            item = QListWidgetItem(display)
+            item.setData(Qt.ItemDataRole.UserRole, name)  # 真实 key
+            # Hover 预览：显示前5行 PDX 代码
+            preview_lines = code_preview.strip().splitlines()[:5]
+            tooltip = '\n'.join(preview_lines)
+            if len(code_preview.strip().splitlines()) > 5:
+                tooltip += '\n...'
+            item.setToolTip(tooltip or _('双击插入到画布'))
             self._list.addItem(item)
 
-    def add_preset(self, name: str, code: str):
-        self._presets[name] = code
+    def add_preset(self, name: str, code: str, widget_count: int = 1):
+        self._presets[name] = {'code': code, 'widget_count': widget_count}
         self._refresh_list()
         self._save_presets()
 
+    def preset_exists(self, name: str) -> bool:
+        return name in self._presets
+
     def _on_insert(self, item: QListWidgetItem):
-        self.insert_preset_requested.emit(item.text())
+        real_name = item.data(Qt.ItemDataRole.UserRole) or item.text()
+        self.insert_preset_requested.emit(real_name)
 
     def _on_delete(self):
         item = self._list.currentItem()
         if item:
-            self._presets.pop(item.text(), None)
+            real_name = item.data(Qt.ItemDataRole.UserRole) or item.text()
+            self._presets.pop(real_name, None)
             self._refresh_list()
             self._save_presets()
 
     def get_preset_code(self, name: str) -> Optional[str]:
-        return self._presets.get(name)
+        entry = self._presets.get(name)
+        if entry is None:
+            return None
+        if isinstance(entry, dict):
+            return entry.get('code')
+        return str(entry)  # 旧格式兼容

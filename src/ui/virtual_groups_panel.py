@@ -19,6 +19,7 @@ from PySide6.QtGui import QColor, QAction, QFont
 from ..core.virtual_groups import VirtualGroup, VirtualGroupManager
 from ..core.gui_model import GUIDocument
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 from .icon_provider import IconProvider
 
 
@@ -76,18 +77,18 @@ class VirtualGroupsPanel(QWidget):
             tb.addAction(a)
             return a
 
-        _act('组', '新建顶层编组', self._create_root_group, 'plus')
-        _act('子', '在当前组内新建子组', self._create_child_group, 'plus')
+        _act(_('组'), _('新建顶层编组'), self._create_root_group, 'plus')
+        _act(_('子'), _('在当前组内新建子组'), self._create_child_group, 'plus')
         tb.addSeparator()
-        _act('重命名', '重命名当前组', self._rename_selected)
-        _act('', '删除当前组', self._delete_selected, 'trash')
+        _act(_('重命名'), _('重命名当前组'), self._rename_selected)
+        _act('', _('删除当前组'), self._delete_selected, 'trash')
         tb.addSeparator()
-        _act('', '切换可见性', self._toggle_visibility_selected, 'eye')
+        _act('', _('切换可见性'), self._toggle_visibility_selected, 'eye')
         tb.addSeparator()
-        _act('从选中建组', '将画布选中控件创建为新编组', self._create_group_from_selection, 'plus')
+        _act(_('从选中建组'), _('将画布选中控件创建为新编组'), self._create_group_from_selection, 'plus')
         tb.addSeparator()
-        _act(' 添加选中控件', '将画布中选中的控件加入当前编组', self._add_canvas_selection, 'chevron-left')
-        _act(' 移除选中控件', '将选中的控件从当前组中移除', self._remove_canvas_selection, 'chevron-right')
+        _act(_(' 添加选中控件'), _('将画布中选中的控件加入当前编组'), self._add_canvas_selection, 'chevron-left')
+        _act(_(' 移除选中控件'), _('将选中的控件从当前组中移除'), self._remove_canvas_selection, 'chevron-right')
         layout.addWidget(tb)
 
         # ── Group tree ─────────────────────────────────────────────────
@@ -143,19 +144,29 @@ class VirtualGroupsPanel(QWidget):
     def _rebuild_tree(self):
         self._tree.clear()
         if not self._manager:
-            self._status.setText('无文档')
+            self._status.setText(_('无文档'))
             return
+        # 取当前文档的有效控件名集合，用于过滤已删除控件
+        valid_names: Optional[set] = None
+        if self._canvas:
+            scene = getattr(self._canvas, 'gui_scene', None)
+            doc = getattr(scene, 'doc', None) if scene else None
+            if doc:
+                valid_names = {w.name for w in doc.all_widgets()}
         for g in self._manager.groups:
-            self._build_group_item(g, parent=None)
+            self._build_group_item(g, parent=None, valid_names=valid_names)
         self._tree.expandAll()
         total = sum(len(g.all_node_names()) for g in self._manager.groups)
         self._status.setText(f'{len(self._manager.groups)} 个顶层组  /  {total} 个控件引用')
 
-    def _build_group_item(self, group: VirtualGroup, parent) -> QTreeWidgetItem:
+    def _build_group_item(self, group: VirtualGroup, parent,
+                          valid_names: Optional[set] = None) -> QTreeWidgetItem:
         item = QTreeWidgetItem(parent or self._tree)
         self._update_group_item(item, group)
-        # Member rows (collapsed by default)
+        # Member rows — skip stale names (widget was deleted)
         for name in group.node_names:
+            if valid_names is not None and name not in valid_names:
+                continue
             m = QTreeWidgetItem(item)
             m.setText(0, f'  · {name}')
             m.setForeground(0, QColor(ThemeManager.accent_color()))
@@ -164,7 +175,7 @@ class VirtualGroupsPanel(QWidget):
             m.setData(0, _ROLE_GID,  group.id)
         # Sub-groups
         for child_group in group.children:
-            self._build_group_item(child_group, item)
+            self._build_group_item(child_group, item, valid_names)
         return item
 
     def _update_group_item(self, item: QTreeWidgetItem, group: VirtualGroup):
@@ -223,8 +234,8 @@ class VirtualGroupsPanel(QWidget):
             group = self._manager.find_by_id(gid) if self._manager and gid else None
             if group:
                 self._status.setText(
-                    f'{group.name}  |  {len(group.node_names)} 个控件  |  '
-                    + ('可见' if group.visible else '隐藏')
+                    f'{group.name}  |  {len(group.node_names)} ' + _('个控件') + '  |  '
+                    + (_('可见') if group.visible else _('隐藏'))
                 )
 
     def _on_double_click(self, item: QTreeWidgetItem, col: int):
@@ -243,7 +254,7 @@ class VirtualGroupsPanel(QWidget):
             name = item.data(0, _ROLE_ID)
             gid  = item.data(0, _ROLE_GID)
             menu.addAction(f'在画布中定位: {name}', lambda: self._select_widget_by_name(name))
-            menu.addAction('从组中移除', lambda: self._remove_member(name, gid))
+            menu.addAction(_('从组中移除'), lambda: self._remove_member(name, gid))
             menu.exec(self._tree.viewport().mapToGlobal(pos))
             return
 
@@ -251,17 +262,17 @@ class VirtualGroupsPanel(QWidget):
             gid = item.data(0, _ROLE_ID)
             group = self._manager.find_by_id(gid)
             if group:
-                menu.addAction('重命名', lambda: self._rename_group(group, item))
-                menu.addAction('更改颜色', lambda: self._change_color(group, item))
+                menu.addAction(_('重命名'), lambda: self._rename_group(group, item))
+                menu.addAction(_('更改颜色'), lambda: self._change_color(group, item))
                 menu.addSeparator()
-                menu.addAction('切换可见性', lambda: self._toggle_visibility(group, item))
-                menu.addAction('全选组内控件 (画布)', lambda: self._select_all_in_group(group))
+                menu.addAction(_('切换可见性'), lambda: self._toggle_visibility(group, item))
+                menu.addAction(_('全选组内控件 (画布)'), lambda: self._select_all_in_group(group))
                 menu.addSeparator()
-                menu.addAction('添加子组', lambda: self._create_child_group())
-                menu.addAction('删除组', lambda: self._delete_group(gid))
+                menu.addAction(_('添加子组'), lambda: self._create_child_group())
+                menu.addAction(_('删除组'), lambda: self._delete_group(gid))
         else:
-            menu.addAction('新建顶层组', self._create_root_group)
-            menu.addAction('从选中控件建组', self._create_group_from_selection)
+            menu.addAction(_('新建顶层组'), self._create_root_group)
+            menu.addAction(_('从选中控件建组'), self._create_group_from_selection)
 
         menu.exec(self._tree.viewport().mapToGlobal(pos))
 
@@ -274,15 +285,15 @@ class VirtualGroupsPanel(QWidget):
         if not self._manager:
             return
         if not self._canvas:
-            QMessageBox.information(self, '提示', '请先打开文件。')
+            QMessageBox.information(self, _('提示'), _('请先打开文件。'))
             return
         nodes = getattr(self._canvas.gui_scene, 'get_selected_nodes', lambda: [])()
         names = [n.name for n in nodes if n.name]
         if not names:
-            QMessageBox.information(self, '提示', '请先在画布中选中已命名控件。')
+            QMessageBox.information(self, _('提示'), _('请先在画布中选中已命名控件。'))
             return
         default_name = f'编组 ({len(names)}个控件)'
-        name, ok = QInputDialog.getText(self, '从选中控件建组', '编组名称:', text=default_name)
+        name, ok = QInputDialog.getText(self, _('从选中控件建组'), _('编组名称:'), text=default_name)
         if not ok or not name.strip():
             return
         group = self._manager.create_group(name.strip())
@@ -293,7 +304,7 @@ class VirtualGroupsPanel(QWidget):
 
     def _create_root_group(self):
         if not self._manager: return
-        name, ok = QInputDialog.getText(self, '新建编组', '编组名称:', text='新编组')
+        name, ok = QInputDialog.getText(self, _('新建编组'), _('编组名称:'), text=_('新编组'))
         if ok and name.strip():
             self._manager.create_group(name.strip())
             self._manager.save()
@@ -305,7 +316,7 @@ class VirtualGroupsPanel(QWidget):
         if parent is None:
             self._create_root_group()
             return
-        name, ok = QInputDialog.getText(self, '新建子组', '子组名称:', text='子组')
+        name, ok = QInputDialog.getText(self, _('新建子组'), _('子组名称:'), text=_('子组'))
         if ok and name.strip():
             self._manager.create_group(name.strip(), parent)
             self._manager.save()
@@ -318,14 +329,14 @@ class VirtualGroupsPanel(QWidget):
         if item: self._rename_group(group, item)
 
     def _rename_group(self, group: VirtualGroup, item: QTreeWidgetItem):
-        name, ok = QInputDialog.getText(self, '重命名', '新名称:', text=group.name)
+        name, ok = QInputDialog.getText(self, _('重命名'), _('新名称:'), text=group.name)
         if ok and name.strip():
             group.name = name.strip()
             self._update_group_item(item, group)
             if self._manager: self._manager.save()
 
     def _change_color(self, group: VirtualGroup, item: QTreeWidgetItem):
-        color = QColorDialog.getColor(QColor(group.color), self, '选择颜色')
+        color = QColorDialog.getColor(QColor(group.color), self, _('选择颜色'))
         if color.isValid():
             group.color = color.name()
             self._update_group_item(item, group)
@@ -338,7 +349,7 @@ class VirtualGroupsPanel(QWidget):
 
     def _delete_group(self, gid: str):
         if not self._manager: return
-        ret = QMessageBox.question(self, '删除编组', '确定删除此组？（控件本身不受影响）')
+        ret = QMessageBox.question(self, _('删除编组'), _('确定删除此组？（控件本身不受影响）'))
         if ret == QMessageBox.StandardButton.Yes:
             self._manager.delete_group(gid)
             self._manager.save()
@@ -372,13 +383,13 @@ class VirtualGroupsPanel(QWidget):
         group = self._current_group()
         if not self._manager: return
         if group is None:
-            QMessageBox.information(self, '提示', '请先选中一个编组。')
+            QMessageBox.information(self, _('提示'), _('请先选中一个编组。'))
             return
         if not self._canvas: return
         nodes = getattr(self._canvas.gui_scene, 'get_selected_nodes', lambda: [])()
         names = [n.name for n in nodes if n.name]
         if not names:
-            QMessageBox.information(self, '提示', '请先在画布中选中已命名控件。')
+            QMessageBox.information(self, _('提示'), _('请先在画布中选中已命名控件。'))
             return
         self._manager.add_nodes_to_group(group, names)
         self._manager.save()

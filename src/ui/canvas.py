@@ -25,6 +25,7 @@ from ..core.gui_model import (
 from ..core.resource_manager import ResourceManager
 from ..core.settings import AppSettings
 from ..core.snap_engine import SnapEngine
+from ..core.i18n import _
 from .snap_guide_overlay import SnapGuideOverlay
 from .widget_items import GUIWidgetItem
 
@@ -718,6 +719,17 @@ class GUIScene(QGraphicsScene):
     def get_item_for_node(self, node: WidgetNode) -> Optional[GUIWidgetItem]:
         return self._node_to_item.get(id(node))
 
+    def _node_doc_index(self, node: WidgetNode) -> tuple:
+        """返回节点在文档中的排序键（父节点ID + 在父节点中的索引），用于保持 Z 轴顺序。"""
+        try:
+            if node.parent:
+                return (id(node.parent), node.parent.children.index(node))
+            elif self.doc:
+                return (0, self.doc.roots.index(node))
+        except ValueError:
+            pass
+        return (0, 9999)
+
     def get_selected_nodes(self) -> List[WidgetNode]:
         return [item.node for item in self.selectedItems()
                 if isinstance(item, GUIWidgetItem)]
@@ -842,8 +854,8 @@ class GUIScene(QGraphicsScene):
             from PySide6.QtWidgets import QMessageBox
             names = ', '.join(i.node.name for i in protected)
             QMessageBox.warning(
-                None, '无法删除',
-                f'以下控件是原版必要控件，不能删除：\n{names}',
+                None, _('无法删除'),
+                _('以下控件是原版必要控件，不能删除：\n') + names,
             )
             items = [i for i in items if not getattr(i.node, '_protected', False)]
             if not items:
@@ -935,6 +947,8 @@ class GUIScene(QGraphicsScene):
         """Copy selected nodes to clipboard."""
         nodes = self.get_selected_nodes()
         if nodes:
+            # 按文档顺序排序，确保粘贴后 Z 轴顺序与原始一致
+            nodes = sorted(nodes, key=self._node_doc_index)
             from ..codegen.gui_writer import write_widget_to_string
             text = '\n\n'.join(write_widget_to_string(n) for n in nodes)
             QApplication.clipboard().setText(text)
@@ -1225,8 +1239,9 @@ class GUIScene(QGraphicsScene):
     # ------------------------------------------------------------------
 
     def _get_selected_pos_size(self) -> list:
-        """获取所有选中控件的 (position, size) 列表。"""
+        """获取所有选中控件的 (item, position, size) 列表，按文档顺序排列以保持 Z 轴顺序。"""
         items = [i for i in self.selectedItems() if isinstance(i, GUIWidgetItem)]
+        items.sort(key=lambda i: self._node_doc_index(i.node))
         return [(i, i.node.position, (i._display_w, i._display_h)) for i in items]
 
     def linear_array_selected(self, count: int, offset_x: int, offset_y: int):
@@ -1553,7 +1568,8 @@ class GUIScene(QGraphicsScene):
             super().keyPressEvent(event)
             return
 
-        step = self.grid_size if self.snap_to_grid else 1
+        # 方向键步长：Shift+方向=10px，否则始终1px，不受吸附影响
+        step = 10 if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) else 1
 
         if event.key() == Qt.Key.Key_Escape:
             # Escape: deselect children, select parent container instead
@@ -1589,13 +1605,26 @@ class GUIScene(QGraphicsScene):
         elif event.key() == Qt.Key.Key_Right: dx = step
 
         if dx != 0 or dy != 0:
+            from ..core.undo import MoveWidgetCommand, CompoundCommand
+            cmds = []
             for node in nodes:
                 x, y = node.position
-                node.position = (x + dx, y + dy)
-                item = self.get_item_for_node(node)
-                if item:
-                    self.refresh_item(node)
-            super().keyPressEvent(event)
+                cmds.append(MoveWidgetCommand(node, (x, y), (x + dx, y + dy)))
+            if self.undo_stack:
+                if len(cmds) == 1:
+                    self.undo_stack.push(cmds[0])
+                else:
+                    self.undo_stack.push(CompoundCommand(cmds, _('移动控件')))
+            else:
+                for cmd in cmds:
+                    cmd.execute()
+            # 刷新受影响的画布项，并通知其他面板
+            for node in nodes:
+                self.refresh_item(node)
+            if self.doc:
+                self.doc.modified = True
+            self.document_modified.emit()
+            event.accept()
             return
 
         super().keyPressEvent(event)
@@ -1802,26 +1831,26 @@ class GUICanvas(QGraphicsView):
             # Parent container selection
             parent_item = item.parentItem()
             if isinstance(parent_item, GUIWidgetItem):
-                sel_parent = menu.addAction(f'选中父容器: {parent_item.node.name}  (Esc)')
+                sel_parent = menu.addAction(_('选中父容器: ') + parent_item.node.name + '  (Esc)')
                 sel_parent.setData(('select_parent', None, None))
 
-            menu.addAction('复制 (Ctrl+D)', self._scene.duplicate_selected)
+            menu.addAction(_('复制 (Ctrl+D)'), self._scene.duplicate_selected)
             if not getattr(node, '_protected', False):
-                menu.addAction('删除 (Del)', self._scene.delete_selected)
+                menu.addAction(_('删除 (Del)'), self._scene.delete_selected)
                 # Change widget type submenu
-                change_type_menu = menu.addMenu('更改控件类型')
+                change_type_menu = menu.addMenu(_('更改控件类型'))
                 for wt in sorted(WIDGET_TYPES):
                     if wt != node.widget_type:
                         act = change_type_menu.addAction(WIDGET_LABELS.get(wt, wt))
                         act.setData(('change_type', wt, node))
-            menu.addAction('居中视图 (Ctrl+F)', self.center_on_selected)
+            menu.addAction(_('居中视图 (Ctrl+F)'), self.center_on_selected)
             menu.addSeparator()
-            add_child = menu.addMenu('添加子控件')
+            add_child = menu.addMenu(_('添加子控件'))
             for wt in sorted(WIDGET_TYPES):
                 act = add_child.addAction(WIDGET_LABELS.get(wt, wt))
                 act.setData(('child', wt, node))
         else:
-            add_menu = menu.addMenu('添加控件')
+            add_menu = menu.addMenu(_('添加控件'))
             for wt in sorted(WIDGET_TYPES):
                 act = add_menu.addAction(WIDGET_LABELS.get(wt, wt))
                 act.setData(('root', wt, None))
@@ -1842,7 +1871,7 @@ class GUICanvas(QGraphicsView):
                 return
             if wt in WIDGET_TYPES:
                 new_name, ok = QInputDialog.getText(
-                    self, '控件名称', f'为新建的 {wt} 输入名称:',
+                    self, _('控件名称'), _('为新建的 ') + wt + _(' 输入名称:'),
                     text=f'new_{wt[:12]}'
                 )
                 if ok and new_name:
@@ -1857,8 +1886,8 @@ class GUICanvas(QGraphicsView):
         if (old_type in CONTAINER_TYPES) != (new_type in CONTAINER_TYPES):
             from PySide6.QtWidgets import QMessageBox
             ret = QMessageBox.question(
-                self, '确认更改',
-                f'将容器/非容器相互转换可能导致子控件丢失，确认继续？'
+                self, _('确认更改'),
+                _('将容器/非容器相互转换可能导致子控件丢失，确认继续？')
             )
             if ret != QMessageBox.StandardButton.Yes:
                 return
@@ -1873,10 +1902,13 @@ class GUICanvas(QGraphicsView):
         self._scene.refresh_item(node)
         self._scene.document_modified.emit()
 
+    def viewport_center_scene(self) -> QPointF:
+        """返回当前可视视窗（摄像机）中心在场景坐标系中的位置。"""
+        vp = self.viewport()
+        return self.mapToScene(vp.width() // 2, vp.height() // 2)
+
     def add_widget_at_center(self, widget_type: str, name: str = '') -> WidgetNode:
-        settings = AppSettings.instance()
-        cw, ch = settings.canvas_size
-        return self._scene.add_widget(widget_type, QPointF(cw // 2, ch // 2), name=name)
+        return self._scene.add_widget(widget_type, self.viewport_center_scene(), name=name)
 
     def select_all(self):
         for item in self._scene.items():

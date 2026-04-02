@@ -133,6 +133,22 @@ class VirtualGroupManager:
     def remove_nodes_from_group(self, group: VirtualGroup, names: List[str]):
         group.node_names = [n for n in group.node_names if n not in names]
 
+    def rename_widget(self, old_name: str, new_name: str):
+        """将所有组内对 old_name 的引用替换为 new_name。"""
+        def _rename(lst: List[VirtualGroup]):
+            for g in lst:
+                g.node_names = [new_name if n == old_name else n for n in g.node_names]
+                _rename(g.children)
+        _rename(self.groups)
+
+    def clean_stale_names(self, valid_names: Set[str]):
+        """从所有组中删除不在 valid_names 中的控件名（控件已被删除）。"""
+        def _clean(lst: List[VirtualGroup]):
+            for g in lst:
+                g.node_names = [n for n in g.node_names if n in valid_names]
+                _clean(g.children)
+        _clean(self.groups)
+
     def get_groups_for_node(self, node_name: str) -> List[VirtualGroup]:
         """Return all groups (at any level) that directly contain this widget."""
         result: List[VirtualGroup] = []

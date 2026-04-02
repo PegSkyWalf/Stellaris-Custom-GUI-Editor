@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "language": "en",
+    "language_name": "English",
+    "author": "Your Name",
+    "version": "1.0",
+    "based_on_app_version": "1.2.0"
+  },
+
+  "群星 GUI 编辑器": "Stellaris GUI Editor",
+  "保存": "Save",
+  "取消": "Cancel",
+  "确定": "OK",
+  "删除": "Delete",
+  "重命名": "Rename",
+  "关闭": "Close"
+}

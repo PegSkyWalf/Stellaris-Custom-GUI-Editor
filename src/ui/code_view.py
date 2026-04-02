@@ -20,6 +20,7 @@ from ..core.gui_model import GUIDocument, WidgetNode
 from ..codegen.gui_writer import write_document, write_document_preserving
 from ..core.theme_manager import is_dark_theme, ThemeManager
 from ..core.settings import AppSettings
+from ..core.i18n import _
 
 # Dark theme token colors (VS Code Dark+)
 _DARK_COLORS = {
@@ -157,28 +158,28 @@ class CodeView(QWidget):
 
         # Header row
         header_row = QHBoxLayout()
-        lbl = QLabel('代码视图')
+        lbl = QLabel(_('代码视图'))
         lbl.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
         header_row.addWidget(lbl)
         header_row.addStretch()
 
-        self._auto_cb = QCheckBox('自动更新')
+        self._auto_cb = QCheckBox(_('自动更新'))
         self._auto_cb.setChecked(True)
-        self._auto_cb.setToolTip('当画布/属性改变时自动刷新代码视图')
+        self._auto_cb.setToolTip(_('当画布/属性改变时自动刷新代码视图'))
         self._auto_cb.stateChanged.connect(
             lambda s: setattr(self, '_auto_update', s == Qt.CheckState.Checked.value)
         )
         header_row.addWidget(self._auto_cb)
 
-        self._auto_apply_cb = QCheckBox('实时同步')
+        self._auto_apply_cb = QCheckBox(_('实时同步'))
         self._auto_apply_cb.setChecked(False)
-        self._auto_apply_cb.setToolTip('编辑代码后1.5秒自动同步到画布（实时双向同步）')
+        self._auto_apply_cb.setToolTip(_('编辑代码后1.5秒自动同步到画布（实时双向同步）'))
         self._auto_apply_cb.stateChanged.connect(self._on_auto_apply_toggled)
         header_row.addWidget(self._auto_apply_cb)
 
-        self._manual_refresh_btn = QPushButton('手动刷新')
+        self._manual_refresh_btn = QPushButton(_('手动刷新'))
         self._manual_refresh_btn.setFixedWidth(70)
-        self._manual_refresh_btn.setToolTip('强制重新生成代码（大文件模式下使用）')
+        self._manual_refresh_btn.setToolTip(_('强制重新生成代码（大文件模式下使用）'))
         self._manual_refresh_btn.clicked.connect(self._do_update)
         header_row.addWidget(self._manual_refresh_btn)
         layout.addLayout(header_row)
@@ -186,10 +187,10 @@ class CodeView(QWidget):
         # Search bar
         search_row = QHBoxLayout()
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText('在代码中搜索...')
+        self._search_edit.setPlaceholderText(_('在代码中搜索...'))
         self._search_edit.returnPressed.connect(self._do_search)
         search_row.addWidget(self._search_edit)
-        search_btn = QPushButton('搜索')
+        search_btn = QPushButton(_('搜索'))
         search_btn.clicked.connect(self._do_search)
         search_row.addWidget(search_btn)
         layout.addLayout(search_row)
@@ -220,17 +221,17 @@ class CodeView(QWidget):
 
         # Buttons
         btn_row = QHBoxLayout()
-        self._copy_btn = QPushButton('复制全部')
+        self._copy_btn = QPushButton(_('复制全部'))
         self._copy_btn.clicked.connect(self._copy_all)
         btn_row.addWidget(self._copy_btn)
 
-        self._goto_btn = QPushButton('跳转到选中控件')
-        self._goto_btn.setToolTip('在代码中定位当前选中的控件')
+        self._goto_btn = QPushButton(_('跳转到选中控件'))
+        self._goto_btn.setToolTip(_('在代码中定位当前选中的控件'))
         self._goto_btn.clicked.connect(self.scroll_to_selected)
         btn_row.addWidget(self._goto_btn)
 
-        self._apply_btn = QPushButton('应用代码修改')
-        self._apply_btn.setToolTip('将当前代码解析并同步回画布')
+        self._apply_btn = QPushButton(_('应用代码修改'))
+        self._apply_btn.setToolTip(_('将当前代码解析并同步回画布'))
         self._apply_btn.clicked.connect(self._apply_edits)
         btn_row.addWidget(self._apply_btn)
         layout.addLayout(btn_row)
@@ -313,8 +314,8 @@ class CodeView(QWidget):
                     self._highlighter.setDocument(None)
                     self._highlighter = None
                 self._large_file_bar.setText(
-                    f'[!] 大文件模式 ({line_count} 行) — 已禁用自动应用和语法高亮以保持流畅。'
-                    '  代码视图仍会跟随画布更新。'
+                    _('[!] 大文件模式 (') + str(line_count)
+                    + _(' 行) — 已禁用自动应用和语法高亮以保持流畅。  代码视图仍会跟随画布更新。')
                 )
                 self._large_file_bar.show()
             elif not is_large and self._large_file_mode:
@@ -333,9 +334,9 @@ class CodeView(QWidget):
             cursor = self._editor.textCursor()
             cursor.setPosition(min(cursor_pos, len(code)))
             self._editor.setTextCursor(cursor)
-            self._status_label.setText(f'{line_count} 行 / {len(code)} 字符')
+            self._status_label.setText(str(line_count) + _(' 行 / ') + str(len(code)) + _(' 字符'))
         except Exception as e:
-            self._editor.setPlainText(f'# 生成代码时发生错误:\n# {e}')
+            self._editor.setPlainText(_('# 生成代码时发生错误:\n# ') + str(e))
 
     def highlight_node(self, node: Optional[WidgetNode]):
         """Highlight the code block corresponding to the selected node."""
@@ -501,16 +502,21 @@ class CodeView(QWidget):
 
     def _highlight_range(self, start: int, end: int):
         """Highlight a character range with background color."""
-        cursor = self._editor.textCursor()
-        cursor.setPosition(start)
-        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        # ExtraSelection 负责视觉高亮（独立于编辑器光标，不影响滚动位置）
+        sel_cursor = self._editor.textCursor()
+        sel_cursor.setPosition(start)
+        sel_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
 
         sel = QTextEdit.ExtraSelection()
         sel.format = self._highlight_format
-        sel.cursor = cursor
+        sel.cursor = sel_cursor
 
         self._editor.setExtraSelections([sel])
-        self._editor.setTextCursor(cursor)
+        # 导航光标定位到 start（无选区）→ centerCursor 滚动到块顶部
+        # 注意：不在此之后调用 setTextCursor(带选区的光标)，否则 Qt 会自动滚到末尾
+        nav_cursor = self._editor.textCursor()
+        nav_cursor.setPosition(start)
+        self._editor.setTextCursor(nav_cursor)
         self._editor.centerCursor()
 
     def _clear_extra_selections(self):

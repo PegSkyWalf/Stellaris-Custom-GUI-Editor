@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 from .icon_provider import IconProvider
 
 if TYPE_CHECKING:
@@ -89,7 +90,7 @@ class NameWarningsPanel(QWidget):
 
             # 父级项：重复名称
             parent_item = QTreeWidgetItem(self._tree)
-            parent_item.setText(0, f'"{name}" — {len(nodes)} 处重复')
+            parent_item.setText(0, f'"{name}" — {len(nodes)}' + _(' 处重复'))
             parent_item.setIcon(0, IconProvider.icon('warning', 14, '#f39c12'))
             parent_item.setData(0, Qt.ItemDataRole.UserRole, None)
             parent_item.setExpanded(True)
@@ -108,11 +109,11 @@ class NameWarningsPanel(QWidget):
 
     def _update_header(self, count: int):
         if count == 0:
-            self._header.setText('没有名称冲突')
+            self._header.setText(_('没有名称冲突'))
             self._header.setStyleSheet(
                 f'font-size: 10px; padding: 2px; color: {ThemeManager.muted_color()};')
         else:
-            self._header.setText(f'{count} 个名称存在重复')
+            self._header.setText(str(count) + _(' 个名称存在重复'))
             self._header.setStyleSheet(
                 'font-size: 10px; padding: 2px; color: #f39c12;')
 

@@ -21,6 +21,7 @@ from PySide6.QtGui import QFont, QPixmap, QPainter, QColor, QLinearGradient
 
 from ..core.settings import AppSettings
 from ..core.theme_manager import AVAILABLE_THEMES, ThemeManager, DEFAULT_THEME
+from ..core.i18n import _
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ class WelcomeDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._settings = AppSettings.instance()
-        self.setWindowTitle('欢迎使用 — 群星 GUI 编辑器')
+        self.setWindowTitle(_('欢迎使用 — 群星 GUI 编辑器'))
         self.setMinimumSize(560, 420)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
 
@@ -88,11 +89,11 @@ class WelcomeDialog(QDialog):
         self._step_label.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         btn_row.addWidget(self._step_label)
         btn_row.addStretch()
-        self._back_btn = QPushButton('上一步')
+        self._back_btn = QPushButton(_('上一步'))
         self._back_btn.setFixedWidth(80)
         self._back_btn.clicked.connect(self._go_back)
         btn_row.addWidget(self._back_btn)
-        self._next_btn = QPushButton('下一步 →')
+        self._next_btn = QPushButton(_('下一步 →'))
         self._next_btn.setFixedWidth(100)
         self._next_btn.setDefault(True)
         self._next_btn.clicked.connect(self._go_next)
@@ -122,29 +123,29 @@ class WelcomeDialog(QDialog):
         lay.setContentsMargins(40, 30, 40, 20)
         lay.setSpacing(14)
 
-        title = QLabel('欢迎使用群星 GUI 编辑器！')
+        title = QLabel(_('欢迎使用群星 GUI 编辑器！'))
         title.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(title)
 
-        desc = QLabel(
+        desc = QLabel(_(
             '本编辑器帮助您为群星游戏模组设计可视化 GUI 界面，\n'
             '无需手动编写繁琐的脚本代码。\n\n'
             '接下来只需 3 步即可完成初始配置，随时可在\n'
             '【工具 → 设置】中修改这些选项。'
-        )
+        ))
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         desc.setWordWrap(True)
         desc.setStyleSheet('font-size:11px; line-height:1.6;')
         lay.addWidget(desc)
 
-        features = QLabel(
+        features = QLabel(_(
             '•  可视化拖拽控件布局\n'
             '•  实时精灵图（DDS/PNG）渲染\n'
             '•  自动生成 .gui 脚本代码\n'
             '•  本地化文本预览\n'
             '•  撤销 / 重做 / 自动保存'
-        )
+        ))
         features.setAlignment(Qt.AlignmentFlag.AlignCenter)
         features.setStyleSheet(f'font-size:10px; color:{ThemeManager.accent_color()};')
         lay.addWidget(features)
@@ -157,30 +158,30 @@ class WelcomeDialog(QDialog):
         lay.setContentsMargins(40, 20, 40, 20)
         lay.setSpacing(10)
 
-        title = QLabel('步骤 1 / 3　指定游戏安装目录')
+        title = QLabel(_('步骤 1 / 3　指定游戏安装目录'))
         title.setFont(QFont('Microsoft YaHei', 13, QFont.Weight.Bold))
         lay.addWidget(title)
 
-        desc = QLabel(
+        desc = QLabel(_(
             '编辑器需要读取群星游戏文件（精灵图、脚本等）来提供预览功能。\n'
             '请指定群星的安装目录，例如：\n'
             '  Steam → 右键群星 → 管理 → 浏览本地文件'
-        )
+        ))
         desc.setWordWrap(True)
         desc.setStyleSheet(f'font-size:10px; color:{ThemeManager.muted_color()};')
         lay.addWidget(desc)
 
         path_row = QHBoxLayout()
         self._game_dir_edit = QLineEdit()
-        self._game_dir_edit.setPlaceholderText('游戏安装目录路径…')
+        self._game_dir_edit.setPlaceholderText(_('游戏安装目录路径…'))
         path_row.addWidget(self._game_dir_edit)
-        browse_btn = QPushButton('浏览…')
+        browse_btn = QPushButton(_('浏览…'))
         browse_btn.setFixedWidth(64)
         browse_btn.clicked.connect(self._browse_game_dir)
         path_row.addWidget(browse_btn)
         lay.addLayout(path_row)
 
-        auto_btn = QPushButton('自动检测游戏目录')
+        auto_btn = QPushButton(_('自动检测游戏目录'))
         auto_btn.clicked.connect(self._auto_detect)
         lay.addWidget(auto_btn)
 
@@ -189,7 +190,7 @@ class WelcomeDialog(QDialog):
         self._game_dir_status.setStyleSheet('font-size:9px;')
         lay.addWidget(self._game_dir_status)
 
-        skip_note = QLabel('如果暂时没有游戏目录，可点击"下一步"跳过，之后在设置中补填。')
+        skip_note = QLabel(_('如果暂时没有游戏目录，可点击"下一步"跳过，之后在设置中补填。'))
         skip_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         skip_note.setWordWrap(True)
         lay.addWidget(skip_note)
@@ -202,7 +203,7 @@ class WelcomeDialog(QDialog):
             if detected:
                 self._game_dir_edit.setText(detected)
                 self._game_dir_status.setText(
-                    f'[OK] 已自动检测到游戏目录')
+                    _('[OK] 已自动检测到游戏目录'))
                 self._game_dir_status.setStyleSheet('color:#2ecc71; font-size:9px;')
 
         lay.addStretch()
@@ -214,11 +215,11 @@ class WelcomeDialog(QDialog):
         lay.setContentsMargins(40, 20, 40, 20)
         lay.setSpacing(10)
 
-        title = QLabel('步骤 2 / 3　选择界面主题')
+        title = QLabel(_('步骤 2 / 3　选择界面主题'))
         title.setFont(QFont('Microsoft YaHei', 13, QFont.Weight.Bold))
         lay.addWidget(title)
 
-        desc = QLabel('选择您偏好的界面配色方案，可在"工具→设置→外观"中随时更改。')
+        desc = QLabel(_('选择您偏好的界面配色方案，可在"工具→设置→外观"中随时更改。'))
         desc.setStyleSheet(f'font-size:10px; color:{ThemeManager.muted_color()};')
         desc.setWordWrap(True)
         lay.addWidget(desc)
@@ -259,11 +260,11 @@ class WelcomeDialog(QDialog):
         lay.setContentsMargins(40, 20, 40, 20)
         lay.setSpacing(14)
 
-        title = QLabel('步骤 3 / 3　配置完成！')
+        title = QLabel(_('步骤 3 / 3　配置完成！'))
         title.setFont(QFont('Microsoft YaHei', 14, QFont.Weight.Bold))
         lay.addWidget(title)
 
-        tips = QLabel(
+        tips = QLabel(_(
             '快速上手：\n\n'
             '1.  打开模组目录\n'
             '    文件 → 打开模组目录 → 选择你的 mod 文件夹\n\n'
@@ -272,7 +273,7 @@ class WelcomeDialog(QDialog):
             '3.  从"控件库"拖入控件，在"属性面板"编辑\n\n'
             '4.  保存（Ctrl+S）生成 .gui 脚本\n\n'
             '如有问题，请查看帮助文档或到 GitHub 提交 Issue。'
-        )
+        ))
         tips.setWordWrap(True)
         tips.setStyleSheet('font-size:10px; line-height:1.7;')
         lay.addWidget(tips)
@@ -285,12 +286,12 @@ class WelcomeDialog(QDialog):
 
     def _update_nav(self):
         total = len(self._pages)
-        self._step_label.setText(f'第 {self._current + 1} 步，共 {total} 步')
+        self._step_label.setText(_('第 ') + str(self._current + 1) + _(' 步，共 ') + str(total) + _(' 步'))
         self._back_btn.setEnabled(self._current > 0)
         if self._current == total - 1:
-            self._next_btn.setText('开始使用')
+            self._next_btn.setText(_('开始使用'))
         else:
-            self._next_btn.setText('下一步 →')
+            self._next_btn.setText(_('下一步 →'))
 
     def _go_next(self):
         if self._current == len(self._pages) - 1:
@@ -331,7 +332,7 @@ class WelcomeDialog(QDialog):
 
     def _browse_game_dir(self):
         start = self._game_dir_edit.text() or os.path.expanduser('~')
-        path = QFileDialog.getExistingDirectory(self, '选择群星游戏安装目录', start)
+        path = QFileDialog.getExistingDirectory(self, _('选择群星游戏安装目录'), start)
         if path:
             self._game_dir_edit.setText(path)
             self._validate_game_dir(path)
@@ -340,19 +341,19 @@ class WelcomeDialog(QDialog):
         detected = self._settings.detect_game_dir()
         if detected:
             self._game_dir_edit.setText(detected)
-            self._game_dir_status.setText('[OK] 已自动检测到游戏目录')
+            self._game_dir_status.setText(_('[OK] 已自动检测到游戏目录'))
             self._game_dir_status.setStyleSheet('color:#2ecc71; font-size:9px;')
         else:
-            self._game_dir_status.setText(
+            self._game_dir_status.setText(_(
                 '✗ 未能自动检测到游戏目录，请手动浏览指定。\n'
                 '提示：在 Steam 中右键群星 → 管理 → 浏览本地文件'
-            )
+            ))
             self._game_dir_status.setStyleSheet('color:#e74c3c; font-size:9px;')
 
     def _validate_game_dir(self, path: str):
         if os.path.isdir(os.path.join(path, 'interface')):
-            self._game_dir_status.setText('[OK] 路径有效（检测到 interface 目录）')
+            self._game_dir_status.setText(_('[OK] 路径有效（检测到 interface 目录）'))
             self._game_dir_status.setStyleSheet('color:#2ecc71; font-size:9px;')
         else:
-            self._game_dir_status.setText('[!] 未检测到 interface 子目录，请确认路径正确')
+            self._game_dir_status.setText(_('[!] 未检测到 interface 子目录，请确认路径正确'))
             self._game_dir_status.setStyleSheet('color:#f39c12; font-size:9px;')

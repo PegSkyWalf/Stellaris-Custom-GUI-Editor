@@ -28,6 +28,7 @@ from PySide6.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QK
 from ..core.pdx_parser import parse_text, pairs_to_dict
 from ..core.resource_manager import ResourceManager
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 
 
 # ---------------------------------------------------------------------------
@@ -99,21 +100,21 @@ class ButtonEffectsEditor(QWidget):
 
         # ── Top toolbar ─────────────────────────────────────────────
         toolbar = QHBoxLayout()
-        self._file_label = QLabel('未打开文件')
+        self._file_label = QLabel(_('未打开文件'))
         self._file_label.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         toolbar.addWidget(self._file_label, 1)
 
-        open_btn = QPushButton('打开文件')
+        open_btn = QPushButton(_('打开文件'))
         open_btn.setFixedHeight(24)
         open_btn.clicked.connect(self._open_file)
         toolbar.addWidget(open_btn)
 
-        new_file_btn = QPushButton('新建文件')
+        new_file_btn = QPushButton(_('新建文件'))
         new_file_btn.setFixedHeight(24)
         new_file_btn.clicked.connect(self._new_file)
         toolbar.addWidget(new_file_btn)
 
-        save_btn = QPushButton('保存')
+        save_btn = QPushButton(_('保存'))
         save_btn.setFixedHeight(24)
         save_btn.setShortcut(QKeySequence('Ctrl+S'))
         save_btn.clicked.connect(self._save_file)
@@ -131,10 +132,10 @@ class ButtonEffectsEditor(QWidget):
         fp_layout.setSpacing(2)
 
         file_hdr = QHBoxLayout()
-        file_hdr.addWidget(QLabel('文件库'))
+        file_hdr.addWidget(QLabel(_('文件库')))
         refresh_btn = QPushButton('↻')
         refresh_btn.setFixedSize(22, 22)
-        refresh_btn.setToolTip('重新扫描按钮效果目录')
+        refresh_btn.setToolTip(_('重新扫描按钮效果目录'))
         refresh_btn.clicked.connect(self._refresh_file_tree)
         file_hdr.addWidget(refresh_btn)
         fp_layout.addLayout(file_hdr)
@@ -158,14 +159,14 @@ class ButtonEffectsEditor(QWidget):
         left_layout.setSpacing(2)
 
         list_header = QHBoxLayout()
-        list_header.addWidget(QLabel('效果列表'))
+        list_header.addWidget(QLabel(_('效果列表')))
         new_effect_btn = QPushButton('+')
         new_effect_btn.setFixedSize(22, 22)
-        new_effect_btn.setToolTip('新建 button_effect')
+        new_effect_btn.setToolTip(_('新建 button_effect'))
         new_effect_btn.clicked.connect(self._new_effect)
         del_effect_btn = QPushButton('−')
         del_effect_btn.setFixedSize(22, 22)
-        del_effect_btn.setToolTip('删除选中效果')
+        del_effect_btn.setToolTip(_('删除选中效果'))
         del_effect_btn.clicked.connect(self._delete_effect)
         list_header.addWidget(new_effect_btn)
         list_header.addWidget(del_effect_btn)
@@ -187,12 +188,12 @@ class ButtonEffectsEditor(QWidget):
 
         # Effect name display
         name_row = QHBoxLayout()
-        name_row.addWidget(QLabel('效果名称:'))
+        name_row.addWidget(QLabel(_('效果名称:')))
         self._name_edit = QLineEdit()
         self._name_edit.setPlaceholderText('effect_name')
         self._name_edit.returnPressed.connect(self._rename_current_effect)
         name_row.addWidget(self._name_edit, 1)
-        rename_btn = QPushButton('重命名')
+        rename_btn = QPushButton(_('重命名'))
         rename_btn.setFixedHeight(22)
         rename_btn.clicked.connect(self._rename_current_effect)
         name_row.addWidget(rename_btn)
@@ -205,16 +206,16 @@ class ButtonEffectsEditor(QWidget):
         self._allow_edit = self._make_editor()
         self._effect_edit = self._make_editor()
 
-        self._tabs.addTab(self._potential_edit, 'potential  (显示条件)')
-        self._tabs.addTab(self._allow_edit,     'allow      (激活条件)')
-        self._tabs.addTab(self._effect_edit,    'effect     (执行效果)')
+        self._tabs.addTab(self._potential_edit, _('potential  (显示条件)'))
+        self._tabs.addTab(self._allow_edit,     _('allow      (激活条件)'))
+        self._tabs.addTab(self._effect_edit,    _('effect     (执行效果)'))
 
         right_layout.addWidget(self._tabs)
 
         # Reference note
         note = QLabel(
-            'potential: 按钮显示条件   allow: 按钮可点击条件   effect: 点击执行的效果\n'
-            '可用作用域: This = 当前所选对象  From = 玩家国家'
+            _('potential: 按钮显示条件   allow: 按钮可点击条件   effect: 点击执行的效果\n'
+              '可用作用域: This = 当前所选对象  From = 玩家国家')
         )
         note.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 8px;')
         note.setWordWrap(True)
@@ -237,7 +238,7 @@ class ButtonEffectsEditor(QWidget):
         edit = QTextEdit()
         edit.setFont(QFont('Consolas', 9))
         edit.setAcceptRichText(False)
-        edit.setPlaceholderText('# 在此编写脚本...\nalways = yes')
+        edit.setPlaceholderText(_('# 在此编写脚本...\nalways = yes'))
         _BEHighlighter(edit.document())
         edit.textChanged.connect(self._on_content_changed)
         return edit
@@ -257,7 +258,7 @@ class ButtonEffectsEditor(QWidget):
             with open(path, 'r', encoding='utf-8-sig', errors='replace') as f:
                 raw = f.read()
         except Exception as e:
-            QMessageBox.critical(self, '错误', f'无法打开文件:\n{e}')
+            QMessageBox.critical(self, _('错误'), _('无法打开文件:\n') + str(e))
             return
         self._current_file = path
         self._file_label.setText(os.path.basename(path))
@@ -292,20 +293,20 @@ class ButtonEffectsEditor(QWidget):
                 child.setToolTip(0, fpath)
 
         if self._mod_dir:
-            _add_dir_to_tree(self._mod_dir, f'模组: {os.path.basename(self._mod_dir)}')
+            _add_dir_to_tree(self._mod_dir, _('模组: ') + os.path.basename(self._mod_dir))
         if rm.game_dir:
-            _add_dir_to_tree(rm.game_dir, '原版游戏')
+            _add_dir_to_tree(rm.game_dir, _('原版游戏'))
 
         if self._file_tree.topLevelItemCount() == 0:
             placeholder = QTreeWidgetItem(self._file_tree)
-            placeholder.setText(0, '(未找到 button_effects 文件)')
+            placeholder.setText(0, _('(未找到 button_effects 文件)'))
 
     def _on_file_tree_clicked(self, item: QTreeWidgetItem, col: int):
         path = item.data(0, Qt.ItemDataRole.UserRole)
         if path and os.path.isfile(path):
             if self._dirty:
                 resp = QMessageBox.question(
-                    self, '未保存更改', '当前文件有未保存的更改，是否切换？',
+                    self, _('未保存更改'), _('当前文件有未保存的更改，是否切换？'),
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if resp != QMessageBox.StandardButton.Yes:
@@ -361,10 +362,10 @@ class ButtonEffectsEditor(QWidget):
             with open(self._current_file, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(content)
             self._dirty = False
-            self._status.setText(f'已保存: {os.path.basename(self._current_file)}')
+            self._status.setText(_('已保存: ') + os.path.basename(self._current_file))
             self.modified_signal.emit()
         except Exception as e:
-            QMessageBox.critical(self, '保存失败', str(e))
+            QMessageBox.critical(self, _('保存失败'), str(e))
 
     def _save_as(self):
         rm = ResourceManager.instance()
@@ -373,7 +374,7 @@ class ButtonEffectsEditor(QWidget):
             default_dir = os.path.join(rm.mod_dir, 'common', 'button_effects')
             os.makedirs(default_dir, exist_ok=True)
         path, _ = QFileDialog.getSaveFileName(
-            self, '另存为', default_dir,
+            self, _('另存为'), default_dir,
             'Stellaris Script (*.txt);;All Files (*)'
         )
         if path:
@@ -393,7 +394,7 @@ class ButtonEffectsEditor(QWidget):
         if not os.path.isdir(start_dir) and rm.game_dir:
             start_dir = os.path.join(rm.game_dir, 'common', 'button_effects')
         path, _ = QFileDialog.getOpenFileName(
-            self, '打开 button_effects 文件', start_dir,
+            self, _('打开 button_effects 文件'), start_dir,
             'Stellaris Script (*.txt);;All Files (*)'
         )
         if path:
@@ -402,13 +403,13 @@ class ButtonEffectsEditor(QWidget):
     def _new_file(self):
         if self._dirty:
             resp = QMessageBox.question(
-                self, '未保存更改', '当前文件有未保存的更改，是否继续新建？',
+                self, _('未保存更改'), _('当前文件有未保存的更改，是否继续新建？'),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if resp != QMessageBox.StandardButton.Yes:
                 return
         self._current_file = None
-        self._file_label.setText('新文件 (未保存)')
+        self._file_label.setText(_('新文件 (未保存)'))
         self._effects.clear()
         self._effect_list.clear()
         self._set_editor_enabled(False)
@@ -509,14 +510,14 @@ class ButtonEffectsEditor(QWidget):
 
     def _new_effect(self):
         name, ok = QInputDialog.getText(
-            self, '新建效果', '效果名称 (英文+下划线):',
+            self, _('新建效果'), _('效果名称 (英文+下划线):'),
             text='my_new_button_effect'
         )
         if not ok or not name.strip():
             return
         name = name.strip()
         if name in self._effects:
-            QMessageBox.warning(self, '重复', f'效果 "{name}" 已存在。')
+            QMessageBox.warning(self, _('重复'), _('效果 "{}\" 已存在。').format(name))
             return
         self._effects[name] = (
             '\tpotential = {\n\t\talways = yes\n\t}\n'
@@ -533,7 +534,7 @@ class ButtonEffectsEditor(QWidget):
             return
         name = item.text()
         resp = QMessageBox.question(
-            self, '确认删除', f'确定删除效果 "{name}"？',
+            self, _('确认删除'), _('确定删除效果 "{}"？').format(name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if resp == QMessageBox.StandardButton.Yes:
@@ -549,7 +550,7 @@ class ButtonEffectsEditor(QWidget):
         if not new_name or new_name == old_name:
             return
         if new_name in self._effects:
-            QMessageBox.warning(self, '重复', f'效果 "{new_name}" 已存在。')
+            QMessageBox.warning(self, _('重复'), _('效果 "{}\" 已存在。').format(new_name))
             return
         self._flush_current_effect(old_name)
         content = self._effects.pop(old_name)
@@ -575,11 +576,11 @@ class ButtonEffectsEditor(QWidget):
         if not item:
             return
         menu = QMenu(self)
-        menu.addAction('重命名', self._rename_current_effect)
-        menu.addAction('复制效果名称', lambda: __import__('PySide6.QtWidgets',
+        menu.addAction(_('重命名'), self._rename_current_effect)
+        menu.addAction(_('复制效果名称'), lambda: __import__('PySide6.QtWidgets',
                        fromlist=['QApplication']).QApplication.clipboard().setText(item.text()))
         menu.addSeparator()
-        menu.addAction('删除', self._delete_effect)
+        menu.addAction(_('删除'), self._delete_effect)
         menu.exec(self._effect_list.mapToGlobal(pos))
 
     # ------------------------------------------------------------------

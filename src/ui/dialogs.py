@@ -20,6 +20,8 @@ from PySide6.QtGui import QFont, QPixmap, QIcon, QColor
 from ..core.settings import AppSettings
 from ..core.resource_manager import ResourceManager
 from ..core.theme_manager import AVAILABLE_THEMES, ThemeManager
+from ..core import i18n as _i18n
+from ..core.i18n import _, get_available_languages, get_language_display_name
 
 
 # ===========================================================================
@@ -29,7 +31,7 @@ from ..core.theme_manager import AVAILABLE_THEMES, ThemeManager
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('编辑器设置')
+        self.setWindowTitle(_('编辑器设置'))
         self.setMinimumSize(540, 430)
         self._settings = AppSettings.instance()
         self._setup_ui()
@@ -40,17 +42,17 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
         layout.addWidget(tabs)
 
-        tabs.addTab(self._build_paths_tab(), '路径')
-        tabs.addTab(self._build_canvas_tab(), '画布')
-        tabs.addTab(self._build_appearance_tab(), '外观')
-        tabs.addTab(self._build_editor_tab(), '编辑器')
-        tabs.addTab(self._build_advanced_tab(), '高级')
+        tabs.addTab(self._build_paths_tab(), _('路径'))
+        tabs.addTab(self._build_canvas_tab(), _('画布'))
+        tabs.addTab(self._build_appearance_tab(), _('外观'))
+        tabs.addTab(self._build_editor_tab(), _('编辑器'))
+        tabs.addTab(self._build_advanced_tab(), _('高级'))
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        btns.button(QDialogButtonBox.StandardButton.Ok).setText('确定')
-        btns.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText(_('确定'))
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText(_('取消'))
         btns.accepted.connect(self._save_and_accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
@@ -68,21 +70,21 @@ class SettingsDialog(QDialog):
         self._game_dir_edit = QLineEdit()
         row = QHBoxLayout()
         row.addWidget(self._game_dir_edit)
-        browse_btn = QPushButton('浏览…')
+        browse_btn = QPushButton(_('浏览…'))
         browse_btn.clicked.connect(self._browse_game)
         row.addWidget(browse_btn)
-        form.addRow('游戏安装目录:', row)
+        form.addRow(_('游戏安装目录:'), row)
 
-        note = QLabel('群星的安装目录，例如：\n<Steam>/steamapps/common/Stellaris')
+        note = QLabel(_('群星的安装目录，例如：\n<Steam>/steamapps/common/Stellaris'))
         note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         form.addRow('', note)
 
-        auto_btn = QPushButton('自动检测')
+        auto_btn = QPushButton(_('自动检测'))
         auto_btn.clicked.connect(self._auto_detect)
         form.addRow('', auto_btn)
 
         form.addRow(QLabel(''))
-        extra_label = QLabel('依赖模组目录（用于精灵图贴图查找）:')
+        extra_label = QLabel(_('依赖模组目录（用于精灵图贴图查找）:'))
         extra_label.setStyleSheet('font-weight:bold;')
         form.addRow(extra_label)
 
@@ -91,15 +93,15 @@ class SettingsDialog(QDialog):
         form.addRow(self._extra_mods_list)
 
         extra_btn_row = QHBoxLayout()
-        add_extra_btn = QPushButton('添加目录')
+        add_extra_btn = QPushButton(_('添加目录'))
         add_extra_btn.clicked.connect(self._add_extra_mod)
-        remove_extra_btn = QPushButton('移除选中')
+        remove_extra_btn = QPushButton(_('移除选中'))
         remove_extra_btn.clicked.connect(self._remove_extra_mod)
         extra_btn_row.addWidget(add_extra_btn)
         extra_btn_row.addWidget(remove_extra_btn)
         form.addRow(extra_btn_row)
 
-        extra_note = QLabel('若本模组引用了其他模组的贴图/精灵图，\n请将那些模组的根目录添加到此列表。')
+        extra_note = QLabel(_('若本模组引用了其他模组的贴图/精灵图，\n请将那些模组的根目录添加到此列表。'))
         extra_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         extra_note.setWordWrap(True)
         form.addRow('', extra_note)
@@ -118,50 +120,50 @@ class SettingsDialog(QDialog):
         self._canvas_w = QSpinBox()
         self._canvas_w.setRange(640, 7680)
         self._canvas_w.setSuffix(' px')
-        cform.addRow('画布宽度:', self._canvas_w)
+        cform.addRow(_('画布宽度:'), self._canvas_w)
 
         self._canvas_h = QSpinBox()
         self._canvas_h.setRange(480, 4320)
         self._canvas_h.setSuffix(' px')
-        cform.addRow('画布高度:', self._canvas_h)
+        cform.addRow(_('画布高度:'), self._canvas_h)
 
-        res_note = QLabel('对应游戏运行分辨率，通常为 1920×1080')
+        res_note = QLabel(_('对应游戏运行分辨率，通常为 1920×1080'))
         res_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         cform.addRow('', res_note)
 
         self._grid_size = QSpinBox()
         self._grid_size.setRange(1, 64)
         self._grid_size.setSuffix(' px')
-        cform.addRow('网格尺寸:', self._grid_size)
+        cform.addRow(_('网格尺寸:'), self._grid_size)
 
-        self._show_grid = QCheckBox('显示网格')
+        self._show_grid = QCheckBox(_('显示网格'))
         cform.addRow('', self._show_grid)
 
-        self._snap = QCheckBox('吸附到网格')
+        self._snap = QCheckBox(_('吸附到网格'))
         cform.addRow('', self._snap)
 
         # 智能吸附设置
-        snap_group = QGroupBox('智能吸附')
+        snap_group = QGroupBox(_('智能吸附'))
         snap_form = QFormLayout(snap_group)
         snap_form.setSpacing(8)
 
-        self._smart_snap = QCheckBox('启用智能吸附')
-        self._smart_snap.setToolTip('拖拽时自动对齐到其他控件的边缘/中心')
+        self._smart_snap = QCheckBox(_('启用智能吸附'))
+        self._smart_snap.setToolTip(_('拖拽时自动对齐到其他控件的边缘/中心'))
         snap_form.addRow('', self._smart_snap)
 
         self._snap_threshold = QSpinBox()
         self._snap_threshold.setRange(1, 20)
         self._snap_threshold.setSuffix(' px')
-        self._snap_threshold.setToolTip('吸附灵敏度（越大越容易触发）')
-        snap_form.addRow('吸附阈值:', self._snap_threshold)
+        self._snap_threshold.setToolTip(_('吸附灵敏度（越大越容易触发）'))
+        snap_form.addRow(_('吸附阈值:'), self._snap_threshold)
 
-        self._snap_edges = QCheckBox('边缘对齐')
+        self._snap_edges = QCheckBox(_('边缘对齐'))
         snap_form.addRow('', self._snap_edges)
 
-        self._snap_centers = QCheckBox('中心对齐')
+        self._snap_centers = QCheckBox(_('中心对齐'))
         snap_form.addRow('', self._snap_centers)
 
-        self._snap_spacing = QCheckBox('等间距检测')
+        self._snap_spacing = QCheckBox(_('等间距检测'))
         snap_form.addRow('', self._snap_spacing)
 
         cform.addRow(snap_group)
@@ -179,12 +181,12 @@ class SettingsDialog(QDialog):
         form.setSpacing(12)
 
         self._theme_combo = QComboBox()
-        for key, (display_name, _) in AVAILABLE_THEMES.items():
+        for key, (display_name, _theme_extra) in AVAILABLE_THEMES.items():
             self._theme_combo.addItem(display_name, key)
         self._theme_combo.currentIndexChanged.connect(self._on_theme_preview)
-        form.addRow('界面主题:', self._theme_combo)
+        form.addRow(_('界面主题:'), self._theme_combo)
 
-        theme_note = QLabel('更改主题后点击"确定"即时生效，无需重启。')
+        theme_note = QLabel(_('更改主题后点击"确定"即时生效，无需重启。'))
         theme_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         form.addRow('', theme_note)
 
@@ -194,19 +196,28 @@ class SettingsDialog(QDialog):
         self._accent_preview.setStyleSheet('border:1px solid #555;')
         accent_row.addWidget(self._accent_preview)
         self._accent_edit = QLineEdit()
-        self._accent_edit.setPlaceholderText('如：#4a9fd4  （留空使用主题默认）')
+        self._accent_edit.setPlaceholderText(_('如：#4a9fd4  （留空使用主题默认）'))
         self._accent_edit.textChanged.connect(self._on_accent_changed)
         accent_row.addWidget(self._accent_edit)
-        pick_btn = QPushButton('选色…')
+        pick_btn = QPushButton(_('选色…'))
         pick_btn.setFixedWidth(60)
         pick_btn.clicked.connect(self._pick_accent)
         accent_row.addWidget(pick_btn)
-        form.addRow('强调色:', accent_row)
+        form.addRow(_('强调色:'), accent_row)
 
         self._font_size_spin = QSpinBox()
         self._font_size_spin.setRange(8, 18)
         self._font_size_spin.setSuffix(' pt')
-        form.addRow('界面字体大小:', self._font_size_spin)
+        form.addRow(_('界面字体大小:'), self._font_size_spin)
+
+        self._lang_combo = QComboBox()
+        for lang in get_available_languages():
+            self._lang_combo.addItem(get_language_display_name(lang), lang)
+        form.addRow(_('UI 语言:'), self._lang_combo)
+
+        lang_note = QLabel(_('更改语言后需重启应用完全生效。'))
+        lang_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
+        form.addRow('', lang_note)
 
         return tab
 
@@ -222,24 +233,24 @@ class SettingsDialog(QDialog):
 
         self._undo_limit_spin = QSpinBox()
         self._undo_limit_spin.setRange(10, 500)
-        self._undo_limit_spin.setSuffix(' 步')
-        form.addRow('撤销历史深度:', self._undo_limit_spin)
+        self._undo_limit_spin.setSuffix(_(' 步'))
+        form.addRow(_('撤销历史深度:'), self._undo_limit_spin)
 
         self._autosave_spin = QSpinBox()
         self._autosave_spin.setRange(10, 600)
-        self._autosave_spin.setSuffix(' 秒')
-        form.addRow('自动保存间隔:', self._autosave_spin)
+        self._autosave_spin.setSuffix(_(' 秒'))
+        form.addRow(_('自动保存间隔:'), self._autosave_spin)
 
         self._code_font_edit = QLineEdit()
         self._code_font_edit.setPlaceholderText('Consolas')
-        form.addRow('代码字体:', self._code_font_edit)
+        form.addRow(_('代码字体:'), self._code_font_edit)
 
         self._code_font_size_spin = QSpinBox()
         self._code_font_size_spin.setRange(7, 20)
         self._code_font_size_spin.setSuffix(' pt')
-        form.addRow('代码字体大小:', self._code_font_size_spin)
+        form.addRow(_('代码字体大小:'), self._code_font_size_spin)
 
-        note = QLabel('代码字体修改在下次打开文件后生效。')
+        note = QLabel(_('代码字体修改在下次打开文件后生效。'))
         note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         form.addRow('', note)
         return tab
@@ -257,14 +268,14 @@ class SettingsDialog(QDialog):
         self._log_level_combo = QComboBox()
         for lvl in ('DEBUG', 'INFO', 'WARNING', 'ERROR'):
             self._log_level_combo.addItem(lvl, lvl)
-        form.addRow('日志级别:', self._log_level_combo)
+        form.addRow(_('日志级别:'), self._log_level_combo)
 
-        log_note = QLabel('DEBUG 会记录大量信息，适合排查问题；正常使用建议 INFO。')
+        log_note = QLabel(_('DEBUG 会记录大量信息，适合排查问题；正常使用建议 INFO。'))
         log_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         log_note.setWordWrap(True)
         form.addRow('', log_note)
 
-        open_log_btn = QPushButton('打开日志目录')
+        open_log_btn = QPushButton(_('打开日志目录'))
         open_log_btn.clicked.connect(self._open_log_dir)
         from ..core.logger import get_log_dir, _LOG_FILE
         log_path_lbl = QLabel(str(_LOG_FILE))
@@ -273,17 +284,17 @@ class SettingsDialog(QDialog):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         log_path_lbl.setWordWrap(True)
         form.addRow('', open_log_btn)
-        form.addRow('日志文件:', log_path_lbl)
+        form.addRow(_('日志文件:'), log_path_lbl)
 
         form.addRow(QLabel(''))
-        clear_mod_btn = QPushButton('清除上次加载的模组路径')
-        clear_mod_btn.setToolTip('若应用启动时因自动加载模组而卡死，可点此清除记录')
+        clear_mod_btn = QPushButton(_('清除上次加载的模组路径'))
+        clear_mod_btn.setToolTip(_('若应用启动时因自动加载模组而卡死，可点此清除记录'))
         clear_mod_btn.clicked.connect(self._clear_last_mod_dir)
-        form.addRow('恢复:', clear_mod_btn)
+        form.addRow(_('恢复:'), clear_mod_btn)
 
         form.addRow(QLabel(''))
-        reset_btn = QPushButton('重置首次启动向导')
-        reset_btn.setToolTip('下次启动时重新显示首次配置向导')
+        reset_btn = QPushButton(_('重置首次启动向导'))
+        reset_btn.setToolTip(_('下次启动时重新显示首次配置向导'))
         reset_btn.clicked.connect(self._reset_first_run)
         form.addRow('', reset_btn)
 
@@ -325,6 +336,12 @@ class SettingsDialog(QDialog):
         self._accent_edit.setText(accent)
         self._update_accent_preview(accent)
         self._font_size_spin.setValue(self._settings.font_size)
+        # 语言
+        current_lang = self._settings.get('ui_language', 'zh_CN')
+        for i in range(self._lang_combo.count()):
+            if self._lang_combo.itemData(i) == current_lang:
+                self._lang_combo.setCurrentIndex(i)
+                break
 
         # 编辑器
         self._undo_limit_spin.setValue(self._settings.undo_limit)
@@ -372,6 +389,11 @@ class SettingsDialog(QDialog):
         app = QApplication.instance()
         if app:
             ThemeManager.apply(app, new_theme, new_accent or None)
+        # 语言（立即生效；控件文字需重启后才能重新渲染）
+        new_lang = self._lang_combo.currentData()
+        if new_lang:
+            self._settings.set('ui_language', new_lang)
+            _i18n.set_language(new_lang)
 
         # 编辑器
         self._settings.undo_limit = self._undo_limit_spin.value()
@@ -390,7 +412,7 @@ class SettingsDialog(QDialog):
 
     def _browse_game(self):
         start = self._game_dir_edit.text() or os.path.expanduser('~')
-        path = QFileDialog.getExistingDirectory(self, '选择群星游戏目录', start)
+        path = QFileDialog.getExistingDirectory(self, _('选择群星游戏目录'), start)
         if path:
             self._game_dir_edit.setText(path)
 
@@ -400,13 +422,13 @@ class SettingsDialog(QDialog):
             self._game_dir_edit.setText(detected)
         else:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self, '未找到',
-                                    '无法自动检测群星目录，请手动指定。\n'
-                                    '提示：在 Steam 中右键群星 → 管理 → 浏览本地文件')
+            QMessageBox.information(self, _('未找到'),
+                                    _('无法自动检测群星目录，请手动指定。\n'
+                                      '提示：在 Steam 中右键群星 → 管理 → 浏览本地文件'))
 
     def _add_extra_mod(self):
         start = os.path.expanduser('~')
-        path = QFileDialog.getExistingDirectory(self, '选择依赖模组根目录', start)
+        path = QFileDialog.getExistingDirectory(self, _('选择依赖模组根目录'), start)
         if path:
             self._extra_mods_list.addItem(path)
 
@@ -431,7 +453,7 @@ class SettingsDialog(QDialog):
     def _pick_accent(self):
         current = self._accent_edit.text().strip()
         init_color = QColor(current) if current and QColor(current).isValid() else QColor('#4a9fd4')
-        color = QColorDialog.getColor(init_color, self, '选择强调色')
+        color = QColorDialog.getColor(init_color, self, _('选择强调色'))
         if color.isValid():
             self._accent_edit.setText(color.name())
 
@@ -448,12 +470,12 @@ class SettingsDialog(QDialog):
     def _clear_last_mod_dir(self):
         from PySide6.QtWidgets import QMessageBox
         self._settings.last_mod_dir = ''
-        QMessageBox.information(self, '已清除', '上次加载的模组路径已清除。\n下次启动时将不再自动加载该模组。')
+        QMessageBox.information(self, _('已清除'), _('上次加载的模组路径已清除。\n下次启动时将不再自动加载该模组。'))
 
     def _reset_first_run(self):
         self._settings.first_run = True
         from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, '已重置', '下次启动时将重新显示首次配置向导。')
+        QMessageBox.information(self, _('已重置'), _('下次启动时将重新显示首次配置向导。'))
 
 
 # ===========================================================================
@@ -463,7 +485,7 @@ class SettingsDialog(QDialog):
 class NewFileDialog(QDialog):
     def __init__(self, mod_dir: str = '', parent=None):
         super().__init__(parent)
-        self.setWindowTitle('新建 GUI 文件')
+        self.setWindowTitle(_('新建 GUI 文件'))
         self.setMinimumWidth(440)
         self._mod_dir = mod_dir
         self._setup_ui()
@@ -472,8 +494,8 @@ class NewFileDialog(QDialog):
         layout = QVBoxLayout(self)
 
         note = QLabel(
-            '新文件将基于标准 Custom GUI 模板创建，包含所有必要的原版控件占位符。\n'
-            '请勿删除或更改模板中隐藏控件的 name 值，否则游戏会崩溃。'
+            _('新文件将基于标准 Custom GUI 模板创建，包含所有必要的原版控件占位符。\n'
+              '请勿删除或更改模板中隐藏控件的 name 值，否则游戏会崩溃。')
         )
         note.setStyleSheet('color:#f39c12; font-size:9px;')
         note.setWordWrap(True)
@@ -482,14 +504,14 @@ class NewFileDialog(QDialog):
         form = QFormLayout()
 
         self._name_edit = QLineEdit()
-        self._name_edit.setPlaceholderText('my_custom_gui（不含 .gui 扩展名）')
-        form.addRow('文件名:', self._name_edit)
+        self._name_edit.setPlaceholderText(_('my_custom_gui（不含 .gui 扩展名）'))
+        form.addRow(_('文件名:'), self._name_edit)
 
         self._key_edit = QLineEdit()
         self._key_edit.setPlaceholderText('my_mod_prefix_main_window')
-        key_note = QLabel('GUI 键名 (name=)，在 custom_gui= 中引用此值触发界面')
+        key_note = QLabel(_('GUI 键名 (name=)，在 custom_gui= 中引用此值触发界面'))
         key_note.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
-        form.addRow('GUI 键名:', self._key_edit)
+        form.addRow(_('GUI 键名:'), self._key_edit)
         form.addRow('', key_note)
 
         self._dir_edit = QLineEdit()
@@ -498,25 +520,25 @@ class NewFileDialog(QDialog):
         )
         row = QHBoxLayout()
         row.addWidget(self._dir_edit)
-        btn = QPushButton('浏览…')
+        btn = QPushButton(_('浏览…'))
         btn.clicked.connect(self._browse_dir)
         row.addWidget(btn)
-        form.addRow('保存目录:', row)
+        form.addRow(_('保存目录:'), row)
 
         layout.addLayout(form)
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        btns.button(QDialogButtonBox.StandardButton.Ok).setText('创建')
-        btns.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText(_('创建'))
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText(_('取消'))
         btns.accepted.connect(self._validate)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
 
     def _browse_dir(self):
         start = self._dir_edit.text() or os.path.expanduser('~')
-        path = QFileDialog.getExistingDirectory(self, '选择保存目录', start)
+        path = QFileDialog.getExistingDirectory(self, _('选择保存目录'), start)
         if path:
             self._dir_edit.setText(path)
 
@@ -552,7 +574,7 @@ class SpritePicker(QDialog):
     """精灵图选择对话框。"""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('选择精灵图')
+        self.setWindowTitle(_('选择精灵图'))
         self.setMinimumSize(540, 520)
         self.selected_sprite: str = ''
         self._setup_ui()
@@ -563,14 +585,14 @@ class SpritePicker(QDialog):
 
         filter_row = QHBoxLayout()
         self._search = QLineEdit()
-        self._search.setPlaceholderText('搜索精灵图名称…')
+        self._search.setPlaceholderText(_('搜索精灵图名称…'))
         self._search.textChanged.connect(self._filter)
         filter_row.addWidget(self._search)
 
         self._type_filter = QComboBox()
-        self._type_filter.addItem('全部类型', '')
-        self._type_filter.addItem('可拉伸 (corneredTile)', 'scalable')
-        self._type_filter.addItem('固定尺寸 (spriteType)', 'fixed')
+        self._type_filter.addItem(_('全部类型'), '')
+        self._type_filter.addItem(_('可拉伸 (corneredTile)'), 'scalable')
+        self._type_filter.addItem(_('固定尺寸 (spriteType)'), 'fixed')
         self._type_filter.currentIndexChanged.connect(lambda _: self._filter(self._search.text()))
         filter_row.addWidget(self._type_filter)
         layout.addLayout(filter_row)
@@ -589,7 +611,7 @@ class SpritePicker(QDialog):
 
         right = QWidget()
         rl = QVBoxLayout(right)
-        self._preview = QLabel('无预览')
+        self._preview = QLabel(_('无预览'))
         self._preview.setObjectName('sprite_preview')
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview.setFixedSize(140, 140)
@@ -606,8 +628,8 @@ class SpritePicker(QDialog):
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        btns.button(QDialogButtonBox.StandardButton.Ok).setText('选择')
-        btns.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText(_('选择'))
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText(_('取消'))
         btns.accepted.connect(self._accept_selection)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
@@ -647,13 +669,13 @@ class SpritePicker(QDialog):
         if pm and not pm.isNull():
             self._preview.setPixmap(pm)
         else:
-            self._preview.setText('无法加载')
+            self._preview.setText(_('无法加载'))
         info = rm.get_sprite(name)
         if info:
             nw, nh = rm.get_sprite_natural_size(name)
-            type_str = '可拉伸' if info.is_scalable() else f'固定 {nw}×{nh}'
+            type_str = _('可拉伸') if info.is_scalable() else (_('固定 %d×%d') % (nw, nh))
             self._info.setText(
-                f'类型: {type_str}\n帧数: {info.no_of_frames}\n路径: {info.texture_path}')
+                _('类型: %s\n帧数: %d\n路径: %s') % (type_str, info.no_of_frames, info.texture_path))
 
     def _accept_selection(self):
         item = self._list.currentItem()
@@ -670,11 +692,11 @@ class TooltipPreviewDialog(QDialog):
     """tooltip 本地化预览对话框。"""
     def __init__(self, tooltip_key: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Tooltip 预览')
+        self.setWindowTitle(_('Tooltip 预览'))
         self.setMinimumWidth(400)
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel(f'键值: {tooltip_key}'))
+        layout.addWidget(QLabel(_('键值: %s') % tooltip_key))
 
         rm = ResourceManager.instance()
         loc_text = rm.get_loc(tooltip_key)
@@ -687,7 +709,7 @@ class TooltipPreviewDialog(QDialog):
         layout.addWidget(text_widget)
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        btns.button(QDialogButtonBox.StandardButton.Ok).setText('关闭')
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText(_('关闭'))
         btns.accepted.connect(self.accept)
         layout.addWidget(btns)
 
@@ -699,6 +721,8 @@ class TooltipPreviewDialog(QDialog):
 class ShortcutsDialog(QDialog):
     """快捷键速查对话框。"""
 
+    # SHORTCUTS 的类别名和动作名在 __init__ 中使用 _() 动态翻译，
+    # 此处保留原始中文字符串作为翻译键。
     SHORTCUTS = [
         ('文件操作', [
             ('新建 GUI 文件',   'Ctrl+N'),
@@ -740,22 +764,22 @@ class ShortcutsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('快捷键列表')
+        self.setWindowTitle(_('快捷键列表'))
         self.setMinimumSize(420, 480)
         layout = QVBoxLayout(self)
 
         from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
         tree = QTreeWidget()
         tree.setColumnCount(2)
-        tree.setHeaderLabels(['操作', '快捷键'])
+        tree.setHeaderLabels([_('操作'), _('快捷键')])
         tree.setColumnWidth(0, 220)
         tree.setAlternatingRowColors(True)
 
         for category, shortcuts in self.SHORTCUTS:
-            cat_item = QTreeWidgetItem([category, ''])
+            cat_item = QTreeWidgetItem([_(category), ''])
             cat_item.setFont(0, QFont('Microsoft YaHei', 9, QFont.Weight.Bold))
             for action, key in shortcuts:
-                child = QTreeWidgetItem([action, key])
+                child = QTreeWidgetItem([_(action), key])
                 child.setTextAlignment(1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 cat_item.addChild(child)
             tree.addTopLevelItem(cat_item)
@@ -783,7 +807,7 @@ class AboutDialog(QDialog):
             DESCRIPTION_CN,
         )
 
-        self.setWindowTitle(f'关于 {APP_NAME}')
+        self.setWindowTitle(_('关于 %s') % APP_NAME)
         self.setMinimumWidth(500)
         self.setMinimumHeight(420)
         root = QVBoxLayout(self)
@@ -816,7 +840,7 @@ class AboutDialog(QDialog):
             'border-radius:3px; padding:1px 6px; font-size:10px; font-weight:bold;'
         )
         ver_row.addWidget(ver_badge)
-        date_lbl = QLabel(f'  构建日期 {BUILD_DATE}')
+        date_lbl = QLabel('  ' + (_('构建日期 %s') % BUILD_DATE))
         date_lbl.setStyleSheet('color:rgba(255,255,255,160); font-size:9px; background:transparent;')
         ver_row.addWidget(date_lbl)
         ver_row.addStretch()
@@ -843,7 +867,7 @@ class AboutDialog(QDialog):
         body_layout.addWidget(sep)
 
         # 功能列表（两列）
-        feat_title = QLabel('主要功能')
+        feat_title = QLabel(_('主要功能'))
         feat_title.setFont(QFont('Microsoft YaHei', 9, QFont.Weight.Bold))
         body_layout.addWidget(feat_title)
 
@@ -866,7 +890,9 @@ class AboutDialog(QDialog):
         col1.setSpacing(3)
         col2.setSpacing(3)
         for i, (title, detail) in enumerate(feats):
-            lbl = QLabel(f'<b>{title}</b>  <span style="color:{ThemeManager.muted_color()}">{detail}</span>')
+            lbl = QLabel(
+                f'<b>{_(title)}</b>  <span style="color:{ThemeManager.muted_color()}">{_(detail)}</span>'
+            )
             lbl.setWordWrap(True)
             lbl.setStyleSheet('font-size:9px;')
             (col1 if i % 2 == 0 else col2).addWidget(lbl)
@@ -883,16 +909,16 @@ class AboutDialog(QDialog):
         # 作者 + 链接行
         info_row = QHBoxLayout()
 
-        author_lbl = QLabel(f'作者: <b>{AUTHOR}</b>  <a href="mailto:{AUTHOR_EMAIL}">{AUTHOR_EMAIL}</a>')
+        author_lbl = QLabel(_('作者: ') + f'<b>{AUTHOR}</b>  <a href="mailto:{AUTHOR_EMAIL}">{AUTHOR_EMAIL}</a>')
         author_lbl.setOpenExternalLinks(True)
         author_lbl.setStyleSheet('font-size:9px;')
         info_row.addWidget(author_lbl, 1)
 
         links_lbl = QLabel(
             f'<a href="{GITHUB_URL}">GitHub</a>'
-            f'  ·  <a href="{RELEASES_URL}">发布页</a>'
-            f'  ·  <a href="{ISSUES_URL}">反馈 Bug</a>'
-            f'  ·  <a href="{LICENSE_URL}">{LICENSE_NAME}</a>'
+            + f'  ·  <a href="{RELEASES_URL}">' + _('发布页') + '</a>'
+            + f'  ·  <a href="{ISSUES_URL}">' + _('反馈 Bug') + '</a>'
+            + f'  ·  <a href="{LICENSE_URL}">{LICENSE_NAME}</a>'
         )
         links_lbl.setOpenExternalLinks(True)
         links_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -916,7 +942,7 @@ class AboutDialog(QDialog):
         copy_lbl.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:8px; border:none;')
         foot_layout.addWidget(copy_lbl, 1)
 
-        close_btn = QPushButton('关闭')
+        close_btn = QPushButton(_('关闭'))
         close_btn.setFixedWidth(80)
         close_btn.clicked.connect(self.accept)
         close_btn.setDefault(True)

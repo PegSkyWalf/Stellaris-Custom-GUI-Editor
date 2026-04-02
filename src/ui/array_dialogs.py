@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPen, QBrush, QColor
 
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 
 
 class LinearArrayDialog(QDialog):
@@ -24,7 +25,7 @@ class LinearArrayDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('线性阵列')
+        self.setWindowTitle(_('线性阵列'))
         self.setMinimumWidth(300)
         layout = QVBoxLayout(self)
 
@@ -32,24 +33,24 @@ class LinearArrayDialog(QDialog):
         self._count_spin = QSpinBox()
         self._count_spin.setRange(1, 50)
         self._count_spin.setValue(3)
-        self._count_spin.setToolTip('复制数量（不含原件）')
-        form.addRow('复制数量:', self._count_spin)
+        self._count_spin.setToolTip(_('复制数量（不含原件）'))
+        form.addRow(_('复制数量:'), self._count_spin)
 
         self._offset_x_spin = QSpinBox()
         self._offset_x_spin.setRange(-2000, 2000)
         self._offset_x_spin.setValue(50)
         self._offset_x_spin.setSuffix(' px')
-        form.addRow('X 偏移:', self._offset_x_spin)
+        form.addRow(_('X 偏移:'), self._offset_x_spin)
 
         self._offset_y_spin = QSpinBox()
         self._offset_y_spin.setRange(-2000, 2000)
         self._offset_y_spin.setValue(0)
         self._offset_y_spin.setSuffix(' px')
-        form.addRow('Y 偏移:', self._offset_y_spin)
+        form.addRow(_('Y 偏移:'), self._offset_y_spin)
 
         layout.addLayout(form)
 
-        hint = QLabel('每个副本相对前一个偏移指定像素。')
+        hint = QLabel(_('每个副本相对前一个偏移指定像素。'))
         hint.setWordWrap(True)
         hint.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9pt;')
         layout.addWidget(hint)
@@ -78,30 +79,30 @@ class CircularArrayDialog(QDialog):
 
     def __init__(self, center_x: float = 960, center_y: float = 540, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('圆形阵列')
+        self.setWindowTitle(_('圆形阵列'))
         self.setMinimumWidth(480)
         layout = QVBoxLayout(self)
 
         top_layout = QHBoxLayout()
 
         # 左侧：参数
-        form_group = QGroupBox('参数')
+        form_group = QGroupBox(_('参数'))
         self._form = QFormLayout(form_group)
         form = self._form
 
         self._mode_combo = QComboBox()
-        self._mode_combo.addItem('以控件为圆心 — 副本分布在外环', 'center')
-        self._mode_combo.addItem('控件在环上 — 作为起点，与副本闭合成环', 'on_ring')
-        form.addRow('模式:', self._mode_combo)
+        self._mode_combo.addItem(_('以控件为圆心 — 副本分布在外环'), 'center')
+        self._mode_combo.addItem(_('控件在环上 — 作为起点，与副本闭合成环'), 'on_ring')
+        form.addRow(_('模式:'), self._mode_combo)
 
         self._count_spin = QSpinBox()
         self._count_spin.setRange(1, 36)
         self._count_spin.setValue(4)
-        self._count_spin.setToolTip('新建副本数量')
-        form.addRow('副本数量:', self._count_spin)
+        self._count_spin.setToolTip(_('新建副本数量'))
+        form.addRow(_('副本数量:'), self._count_spin)
 
         # 圆心字段 (仅 on_ring 模式需要)
-        self._cx_label = QLabel('圆心 X:')
+        self._cx_label = QLabel(_('圆心 X:'))
         self._center_x_spin = QDoubleSpinBox()
         self._center_x_spin.setRange(-4000, 8000)
         self._center_x_spin.setDecimals(0)
@@ -109,7 +110,7 @@ class CircularArrayDialog(QDialog):
         self._center_x_spin.setSuffix(' px')
         form.addRow(self._cx_label, self._center_x_spin)
 
-        self._cy_label = QLabel('圆心 Y:')
+        self._cy_label = QLabel(_('圆心 Y:'))
         self._center_y_spin = QDoubleSpinBox()
         self._center_y_spin.setRange(-4000, 8000)
         self._center_y_spin.setDecimals(0)
@@ -122,13 +123,13 @@ class CircularArrayDialog(QDialog):
         self._radius_spin.setDecimals(0)
         self._radius_spin.setValue(120)
         self._radius_spin.setSuffix(' px')
-        self._radius_spin.setToolTip('副本到圆心的距离（像素）')
-        form.addRow('半径:', self._radius_spin)
+        self._radius_spin.setToolTip(_('副本到圆心的距离（像素）'))
+        form.addRow(_('半径:'), self._radius_spin)
 
         top_layout.addWidget(form_group, 1)
 
         # 右侧：预览
-        preview_group = QGroupBox('预览')
+        preview_group = QGroupBox(_('预览'))
         preview_layout = QVBoxLayout(preview_group)
         self._preview_scene = QGraphicsScene()
         self._preview_view = QGraphicsView(self._preview_scene)
@@ -269,23 +270,23 @@ class MirrorDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('镜像')
+        self.setWindowTitle(_('镜像'))
         self.setMinimumWidth(280)
         layout = QVBoxLayout(self)
 
         form = QFormLayout()
         self._axis_combo = QComboBox()
-        self._axis_combo.addItem('垂直轴（左右翻转）', 'v')
-        self._axis_combo.addItem('水平轴（上下翻转）', 'h')
-        form.addRow('镜像轴:', self._axis_combo)
+        self._axis_combo.addItem(_('垂直轴（左右翻转）'), 'v')
+        self._axis_combo.addItem(_('水平轴（上下翻转）'), 'h')
+        form.addRow(_('镜像轴:'), self._axis_combo)
 
-        self._copy_check = QCheckBox('保留原件（镜像复制）')
+        self._copy_check = QCheckBox(_('保留原件（镜像复制）'))
         self._copy_check.setChecked(True)
         form.addRow(self._copy_check)
 
         layout.addLayout(form)
 
-        hint = QLabel('围绕选中控件的集合中心进行镜像。\n群星不支持旋转/翻转，仅改变位置。')
+        hint = QLabel(_('围绕选中控件的集合中心进行镜像。\n群星不支持旋转/翻转，仅改变位置。'))
         hint.setWordWrap(True)
         hint.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9pt;')
         layout.addWidget(hint)

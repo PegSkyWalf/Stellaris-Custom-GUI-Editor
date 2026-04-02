@@ -17,6 +17,7 @@ from PySide6.QtGui import QFont, QColor
 
 from ..core.resource_manager import ResourceManager
 from ..core.theme_manager import ThemeManager
+from ..core.i18n import _
 
 
 class EventLinkPanel(QWidget):
@@ -36,11 +37,11 @@ class EventLinkPanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        hdr = QLabel('事件关联面板')
+        hdr = QLabel(_('事件关联面板'))
         hdr.setStyleSheet(f'font-weight:bold; color:{ThemeManager.accent_color()}; padding:2px;')
         layout.addWidget(hdr)
 
-        self._gui_label = QLabel('无当前 GUI')
+        self._gui_label = QLabel(_('无当前 GUI'))
         self._gui_label.setStyleSheet(f'color:{ThemeManager.muted_color()}; font-size:9px;')
         layout.addWidget(self._gui_label)
 
@@ -52,18 +53,18 @@ class EventLinkPanel(QWidget):
         list_lay = QVBoxLayout(list_w)
         list_lay.setContentsMargins(0, 0, 0, 0)
         list_lay.setSpacing(2)
-        list_lay.addWidget(QLabel('引用该 GUI 的事件:'))
+        list_lay.addWidget(QLabel(_('引用该 GUI 的事件:')))
         self._list = QListWidget()
         self._list.setAlternatingRowColors(True)
         self._list.currentRowChanged.connect(self._on_row_changed)
         list_lay.addWidget(self._list)
 
         btn_row = QHBoxLayout()
-        self._apply_btn = QPushButton('应用事件上下文')
+        self._apply_btn = QPushButton(_('应用事件上下文'))
         self._apply_btn.setEnabled(False)
         self._apply_btn.clicked.connect(self._on_apply)
         btn_row.addWidget(self._apply_btn)
-        self._clear_btn = QPushButton('清除上下文')
+        self._clear_btn = QPushButton(_('清除上下文'))
         self._clear_btn.clicked.connect(self._on_clear)
         btn_row.addWidget(self._clear_btn)
         list_lay.addLayout(btn_row)
@@ -74,7 +75,7 @@ class EventLinkPanel(QWidget):
         detail_lay = QVBoxLayout(detail_w)
         detail_lay.setContentsMargins(0, 0, 0, 0)
         detail_lay.setSpacing(2)
-        detail_lay.addWidget(QLabel('事件详情:'))
+        detail_lay.addWidget(QLabel(_('事件详情:')))
         self._detail = QTextEdit()
         self._detail.setReadOnly(True)
         self._detail.setMaximumHeight(140)
@@ -116,7 +117,7 @@ class EventLinkPanel(QWidget):
                     self._events.append(ev)
 
         if not self._events:
-            item = QListWidgetItem('（未找到引用此 GUI 的事件）')
+            item = QListWidgetItem(_('（未找到引用此 GUI 的事件）'))
             item.setForeground(QColor(ThemeManager.muted_color()))
             self._list.addItem(item)
             return
@@ -146,17 +147,17 @@ class EventLinkPanel(QWidget):
         rm = ResourceManager.instance()
         lines = []
         lines.append(f'<b>ID:</b> {ev.id}')
-        lines.append(f'<b>类型:</b> {ev.event_type}')
+        lines.append(_('<b>类型:</b> ') + ev.event_type)
         if ev.title:
             loc_title = rm.get_loc(ev.title)
-            lines.append(f'<b>标题:</b> {loc_title}')
+            lines.append(_('<b>标题:</b> ') + loc_title)
         if ev.desc:
             loc_desc = rm.get_loc(ev.desc)
             # Truncate long desc
             preview = loc_desc[:200] + ('...' if len(loc_desc) > 200 else '')
-            lines.append(f'<b>描述:</b> {preview}')
+            lines.append(_('<b>描述:</b> ') + preview)
         if ev.room:
-            scope_note = ' <i>(域引用)</i>' if ev.is_scope_room else ''
+            scope_note = _(' <i>(域引用)</i>') if ev.is_scope_room else ''
             lines.append(f'<b>Room:</b> {ev.room}{scope_note}')
         if ev.custom_gui_option:
             lines.append(f'<b>custom_gui_option:</b> {ev.custom_gui_option}')
@@ -165,7 +166,7 @@ class EventLinkPanel(QWidget):
             for opt in ev.options:
                 name_loc = rm.get_loc(opt.name) if opt.name else opt.name
                 opts.append(f'  • {name_loc} ({opt.name})')
-            lines.append('<b>选项:</b><br>' + '<br>'.join(opts))
+            lines.append(_('<b>选项:</b><br>') + '<br>'.join(opts))
         self._detail.setHtml('<br>'.join(lines))
 
     def _on_apply(self):
