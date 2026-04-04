@@ -6,8 +6,8 @@
 APP_NAME    = "群星自定义GUI编辑器"
 APP_NAME_EN = "Stellaris Custom-GUI Editor"
 
-VERSION       = "1.3.1"
-VERSION_TUPLE = (1, 3, 1)
+VERSION       = "1.3.2"
+VERSION_TUPLE = (1, 3, 2)
 BUILD_DATE    = "2026-04-04"
 
 AUTHOR       = "伞折帆 (方显申 / SanZheFan)"

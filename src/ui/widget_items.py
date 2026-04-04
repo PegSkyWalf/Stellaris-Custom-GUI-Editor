@@ -528,12 +528,6 @@ class GUIWidgetItem(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable, True)
         self.setAcceptHoverEvents(True)
 
-        # Clipping: hide children that exceed the container's boundaries
-        # Stellaris default (absent) = clipping enabled; only 'no' disables it
-        clip_val = str(node.properties.get('clipping', 'yes')).lower()
-        if clip_val in ('yes', '1', 'true'):
-            self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemClipsChildrenToShape, True)
-
         self.refresh()
 
     def refresh(self):
