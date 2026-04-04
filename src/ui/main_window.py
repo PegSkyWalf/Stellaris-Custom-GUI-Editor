@@ -56,7 +56,7 @@ from .button_effects_editor import ButtonEffectsEditor
 from .virtual_groups_panel import VirtualGroupsPanel
 from .event_link_panel import EventLinkPanel
 from .name_warnings_panel import NameWarningsPanel
-from .dialogs import SettingsDialog, NewFileDialog, AboutDialog, ShortcutsDialog
+from .dialogs import SettingsDialog, NewFileDialog, AboutDialog, ShortcutsDialog, UpdateDialog
 from .icon_provider import IconProvider
 from ..core.virtual_groups import VirtualGroupManager
 from ..core.theme_manager import ThemeManager
@@ -364,6 +364,9 @@ class MainWindow(QMainWindow):
         self._setup_connections()
 
         QTimer.singleShot(100, self._initial_load)
+        # 启动后延迟 3 秒再检查更新，避免与资源加载竞争
+        if self._settings.get('check_update_on_startup', True):
+            QTimer.singleShot(3000, self._auto_check_for_updates)
 
     # ------------------------------------------------------------------
     # Setup
@@ -642,6 +645,8 @@ class MainWindow(QMainWindow):
         help_menu = mb.addMenu(_('帮助(&H)'))
         help_menu.addAction(_('快捷键列表...'), lambda: ShortcutsDialog(self).exec())
         help_menu.addSeparator()
+        help_menu.addAction(_('检查更新...'), self._check_for_updates)
+        help_menu.addSeparator()
         help_menu.addAction(_('关于...'), lambda: AboutDialog(self).exec())
 
     def _setup_toolbar(self):
@@ -876,6 +881,53 @@ class MainWindow(QMainWindow):
         self._res_loader.cancelled.connect(self._on_loading_cancelled)
         self._res_loader.error.connect(self._on_resources_error)
         self._res_loader.start()
+
+    # ------------------------------------------------------------------
+    # 更新检查
+    # ------------------------------------------------------------------
+
+    def _auto_check_for_updates(self):
+        """启动时静默检查更新，遵守检查间隔设置。"""
+        from datetime import date
+        last = self._settings.get('last_update_check', '')
+        interval = int(self._settings.get('update_check_interval_days', 1))
+        if last:
+            try:
+                last_date = date.fromisoformat(last)
+                if (date.today() - last_date).days < interval:
+                    return
+            except ValueError:
+                pass
+        self._run_update_check(silent=True)
+
+    def _check_for_updates(self):
+        """菜单"检查更新"——无论间隔都立即检查，有结果后弹窗反馈。"""
+        self._run_update_check(silent=False)
+
+    def _run_update_check(self, silent: bool):
+        """启动后台更新检查线程。silent=True 时无新版本不提示。"""
+        from ..core.update_checker import UpdateCheckThread
+        from datetime import date
+        skip = self._settings.get('skip_version', '')
+        self._update_thread = UpdateCheckThread(skip_version=skip, parent=self)
+        self._update_thread.update_available.connect(
+            lambda info: self._on_update_available(info))
+        if not silent:
+            self._update_thread.no_update.connect(self._on_no_update)
+            self._update_thread.check_failed.connect(self._on_update_check_failed)
+        self._update_thread.finished.connect(
+            lambda: self._settings.set('last_update_check', date.today().isoformat()))
+        self._update_thread.start()
+
+    def _on_update_available(self, info: dict):
+        dlg = UpdateDialog(info, parent=self)
+        dlg.exec()
+
+    def _on_no_update(self):
+        QMessageBox.information(self, _('检查更新'), _('当前已是最新版本。'))
+
+    def _on_update_check_failed(self):
+        QMessageBox.warning(self, _('检查更新'), _('无法连接到更新服务器，请检查网络连接。'))
 
     def _set_loading_state(self, loading: bool):
         """Disable/enable UI actions that require resources to be loaded."""
@@ -1260,8 +1312,7 @@ class MainWindow(QMainWindow):
     def _refresh_after_undo(self):
         if self._current_doc:
             selected = self._canvas.gui_scene.get_selected_node()
-            self._canvas.load_document(self._current_doc)
-            self._layer_panel.populate(self._current_doc)
+            self._reload_canvas_keep_state()
             if selected:
                 self._canvas.gui_scene.select_node(selected)
             self._code_view.schedule_update()
@@ -1493,20 +1544,20 @@ class MainWindow(QMainWindow):
             self._vgroup_panel.refresh()
 
     def _on_property_edited(self, node: WidgetNode):
-        # Push to undo stack
-        # (Individual property changes tracked in props panel)
         scene = self._canvas.gui_scene
         if self._current_doc:
             cw, ch = AppSettings.instance().canvas_size
             resolve_editor_layout_sizes(
                 self._current_doc.roots, cw, ch, ResourceManager.instance())
-            for r in self._current_doc.roots:
-                scene.refresh_item(r)
         scene._refresh_all_auto_sizes()
-        if self._current_doc:
-            for r in self._current_doc.roots:
-                scene.refresh_item(r)
-        self._code_view.schedule_update()
+        # 直接刷新被修改的节点（及其子节点），再刷新其所有祖先以更新尺寸
+        scene.refresh_item(node, _force_children=True)
+        parent = node.parent
+        while parent is not None:
+            scene.refresh_item(parent, _force_children=False)
+            parent = parent.parent
+        # force_update 立即刷新代码视图，确保在 auto-apply 定时器触发前代码已是最新状态
+        self._code_view.force_update()
         self._layer_panel.refresh_item(node)
 
     def _status_display_wh(self, node: WidgetNode) -> Tuple[int, int]:
@@ -1521,6 +1572,38 @@ class MainWindow(QMainWindow):
         w, h = node.size
         return w, h
 
+    # ------------------------------------------------------------------
+    # 图层可见性快照 — 在任何 canvas reload + layer populate 前后调用
+    # ------------------------------------------------------------------
+
+    def _snapshot_visibility(self) -> dict:
+        """将当前图层面板中所有节点的可见性状态存入 {node_id: bool} 字典。"""
+        return {nid: li.is_visible
+                for nid, li in self._layer_panel._node_to_item.items()}
+
+    def _restore_visibility(self, snapshot: dict):
+        """将快照中记录的隐藏状态恢复到重建后的图层面板和画布 item。"""
+        if not snapshot:
+            return
+        scene = self._canvas.gui_scene
+        for node_id, layer_item in self._layer_panel._node_to_item.items():
+            if not snapshot.get(node_id, True):  # 曾经隐藏
+                layer_item.is_visible = False
+                canvas_item = scene.get_item_for_node(layer_item.node)
+                if canvas_item:
+                    canvas_item.set_visible_flag(False)
+
+    def _reload_canvas_keep_state(self):
+        """重新加载画布，保留摄像机位置、图层可见性和编组可见性状态。"""
+        saved_transform = self._canvas.transform()
+        vis = self._snapshot_visibility()
+        self._canvas.gui_scene.load_document(self._current_doc)
+        self._layer_panel.populate(self._current_doc)
+        self._canvas.setTransform(saved_transform)
+        self._restore_visibility(vis)
+        # canvas items 重建后重新应用编组可见性（VirtualGroup.visible 未变，但 items 是新对象）
+        self._on_vgroup_visibility_changed()
+
     def _refresh_canvas(self):
         """Force a complete canvas reload from the current document model."""
         if not self._current_doc:
@@ -1529,8 +1612,7 @@ class MainWindow(QMainWindow):
         rm = ResourceManager.instance()
         cw, ch = AppSettings.instance().canvas_size
         resolve_editor_layout_sizes(self._current_doc.roots, cw, ch, rm)
-        self._canvas.load_document(self._current_doc)
-        self._layer_panel.populate(self._current_doc)
+        self._reload_canvas_keep_state()
         # Keep GUI selector and event panel in sync
         all_gui_names = self._get_all_gui_names(self._current_doc)
         self._populate_gui_selector(all_gui_names)
@@ -1687,8 +1769,7 @@ class MainWindow(QMainWindow):
         """Called when drag-drop in layer panel changes the widget tree structure."""
         if not self._current_doc:
             return
-        # Rebuild canvas from updated model
-        self._canvas.load_document(self._current_doc)
+        self._reload_canvas_keep_state()
         self._current_doc.modified = True
         self._code_view.schedule_update()
         self._status.showMessage(_('图层结构已更新。'))
@@ -1902,8 +1983,7 @@ class MainWindow(QMainWindow):
             if self._current_doc:
                 cw, ch = AppSettings.instance().canvas_size
                 resolve_editor_layout_sizes(self._current_doc.roots, cw, ch, self._rm)
-                self._canvas.load_document(self._current_doc)
-                self._layer_panel.populate(self._current_doc)
+                self._reload_canvas_keep_state()
                 self._code_view.schedule_update()
 
             self._status.showMessage(

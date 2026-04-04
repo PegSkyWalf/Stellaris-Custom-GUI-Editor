@@ -949,3 +949,104 @@ class AboutDialog(QDialog):
         foot_layout.addWidget(close_btn)
 
         root.addWidget(foot)
+
+
+# ===========================================================================
+# UpdateDialog — 有新版本时弹出的提示对话框
+# ===========================================================================
+
+class UpdateDialog(QDialog):
+    """
+    有新版本可用时展示的提示对话框。
+
+    按钮行为：
+    - 前往下载  → 打开浏览器 Release 页，关闭对话框
+    - 跳过此版本 → 将该版本写入 settings skip_version，关闭
+    - 稍后提醒  → 直接关闭（下次启动仍会提示）
+    """
+
+    def __init__(self, info: dict, parent=None):
+        super().__init__(parent)
+        self._info = info
+        self._settings = AppSettings.instance()
+
+        self.setWindowTitle(_('发现新版本'))
+        self.setMinimumWidth(480)
+        self.setWindowFlags(
+            self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint
+        )
+
+        root = QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(20, 20, 20, 16)
+
+        # 标题行
+        from ..core.__version__ import VERSION
+        title = QLabel(
+            _('发现新版本 ') + f'<b>{info["name"]}</b>'
+            + f'  <span style="font-size:9px; color:{ThemeManager.muted_color()};">'
+            + f'({info["date"]})</span>'
+        )
+        title.setTextFormat(Qt.TextFormat.RichText)
+        title.setFont(QFont('Microsoft YaHei', 12))
+        root.addWidget(title)
+
+        cur_lbl = QLabel(
+            _('当前版本：') + f'<span style="color:{ThemeManager.muted_color()};">v{VERSION}</span>'
+        )
+        cur_lbl.setTextFormat(Qt.TextFormat.RichText)
+        cur_lbl.setStyleSheet('font-size:9px;')
+        root.addWidget(cur_lbl)
+
+        # Release Notes
+        if info.get('body'):
+            notes_lbl = QLabel(_('更新内容：'))
+            notes_lbl.setStyleSheet('font-size:9px; font-weight:bold;')
+            root.addWidget(notes_lbl)
+
+            notes = QTextEdit()
+            notes.setReadOnly(True)
+            notes.setPlainText(info['body'])
+            notes.setMaximumHeight(180)
+            notes.setStyleSheet('font-size:9px;')
+            root.addWidget(notes)
+
+        # 按钮行
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        skip_btn = QPushButton(_('跳过此版本'))
+        skip_btn.setFixedWidth(100)
+        skip_btn.clicked.connect(self._skip)
+        btn_row.addWidget(skip_btn)
+
+        btn_row.addStretch()
+
+        later_btn = QPushButton(_('稍后提醒'))
+        later_btn.setFixedWidth(80)
+        later_btn.clicked.connect(self.reject)
+        btn_row.addWidget(later_btn)
+
+        download_btn = QPushButton(_('前往下载'))
+        download_btn.setFixedWidth(90)
+        download_btn.setDefault(True)
+        download_btn.clicked.connect(self._download)
+        btn_row.addWidget(download_btn)
+
+        root.addLayout(btn_row)
+
+    def _download(self):
+        url = self._info.get('url', '')
+        if url:
+            try:
+                from PySide6.QtGui import QDesktopServices
+                from PySide6.QtCore import QUrl
+                QDesktopServices.openUrl(QUrl(url))
+            except Exception:
+                import subprocess
+                subprocess.Popen(['start', url], shell=True)
+        self.accept()
+
+    def _skip(self):
+        self._settings.set('skip_version', self._info.get('tag', ''))
+        self.reject()

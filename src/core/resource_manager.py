@@ -52,6 +52,7 @@ class SpriteInfo:
         self.natural_width = width
         self.natural_height = height
         self._priority = 0
+        self.source_file: str = ''  # .gfx file that defines this sprite
 
     def is_scalable(self) -> bool:
         """True if this sprite stretches to fit size (corneredTileSpriteType)."""
@@ -99,6 +100,8 @@ class ResourceManager:
         self._text_icon_pixmap_cache: Dict[str, 'QPixmap'] = {}
         # Track which dirs have already been event-scanned (lazy scan support)
         self._events_scanned_dirs: Set[str] = set()
+        # 文本颜色码表（从 fonts.gfx textcolors 块加载，代码→QColor）
+        self._text_colors: Dict[str, 'QColor'] = {}
 
     @classmethod
     def instance(cls) -> 'ResourceManager':
@@ -328,12 +331,15 @@ class ResourceManager:
             _log.warning("解析 GFX 文件失败: %s — %s", gfx_path, e)
             return
         before = len(self._sprites)
-        self._register_sprites_from_gfx_pairs(pairs, priority)
+        self._register_sprites_from_gfx_pairs(pairs, priority, gfx_path)
         added = len(self._sprites) - before
         if added:
             _log.debug("    %s: 注册 %d 个精灵图", os.path.basename(gfx_path), added)
+        # 特殊处理 fonts.gfx：提取 textcolors 颜色码定义
+        if os.path.basename(gfx_path).lower() == 'fonts.gfx':
+            self._parse_fonts_gfx_colors(gfx_path)
 
-    def _register_sprites_from_gfx_pairs(self, pairs: list, priority: int):
+    def _register_sprites_from_gfx_pairs(self, pairs: list, priority: int, source_file: str = ''):
         """Register sprite* blocks: spriteTypes = { ... }, or top-level spriteType = { ... }."""
         if not isinstance(pairs, list):
             return
@@ -341,13 +347,13 @@ class ResourceManager:
             if not isinstance(key, str):
                 continue
             if key.lower() == 'spritetypes' and isinstance(val, list):
-                self._register_sprites_from_gfx_pairs(val, priority)
+                self._register_sprites_from_gfx_pairs(val, priority, source_file)
                 continue
             canon = self._normalize_sprite_block_key(key)
             if canon and isinstance(val, list):
-                self._register_sprite(canon, val, priority)
+                self._register_sprite(canon, val, priority, source_file)
 
-    def _register_sprite(self, sprite_type: str, pairs: list, priority: int):
+    def _register_sprite(self, sprite_type: str, pairs: list, priority: int, source_file: str = ''):
         d = pairs_to_dict(pairs)
         name = d.get('name')
         if not name or not isinstance(name, str):
@@ -384,7 +390,34 @@ class ResourceManager:
             border_size=border,
         )
         info._priority = priority
+        info.source_file = source_file
         self._sprites[name] = info
+
+    def _parse_fonts_gfx_colors(self, gfx_path: str):
+        """从 fonts.gfx 的 textcolors 块解析颜色码定义（代码 → QColor）。"""
+        try:
+            with open(gfx_path, 'r', encoding='utf-8-sig', errors='replace') as fh:
+                content = fh.read()
+            # 找 textcolors = { ... } 块（跨行）
+            tc_match = re.search(r'textcolors\s*=\s*\{([^}]+)\}', content, re.DOTALL)
+            if not tc_match:
+                return
+            block = tc_match.group(1)
+            # 每行格式：KEY = { R G B } 或 KEY = { R G B A }，KEY 可以是字母、数字或 _
+            for m in re.finditer(
+                r'(?:^|(?<=\s))([A-Za-z0-9_])\s*=\s*\{\s*(\d+)\s+(\d+)\s+(\d+)',
+                block
+            ):
+                key = m.group(1)
+                r, g, b = int(m.group(2)), int(m.group(3)), int(m.group(4))
+                self._text_colors[key] = QColor(r, g, b)
+            _log.debug("fonts.gfx: 加载 %d 个文本颜色码", len(self._text_colors))
+        except Exception as e:
+            _log.warning("解析 fonts.gfx 颜色码失败: %s", e)
+
+    def get_text_colors(self) -> Dict[str, 'QColor']:
+        """返回从 fonts.gfx 加载的文本颜色码字典（代码 → QColor）。"""
+        return self._text_colors
 
     def _load_localisation_dir(self, loc_dir: str,
                                cancel_event: Optional[threading.Event] = None):

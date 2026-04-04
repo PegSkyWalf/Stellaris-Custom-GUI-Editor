@@ -233,6 +233,18 @@ class PropertiesPanel(QWidget):
         )
         form.addRow('', self._moveable_cb)
 
+        # 旋转 — 仅对使用 spriteType 的控件显示（iconType、buttonType、effectButtonType 等）
+        self._rotation_label = QLabel(_('旋转 (rotation):'))
+        self._rotation_spin = QDoubleSpinBox()
+        self._rotation_spin.setRange(-6.30, 6.30)
+        self._rotation_spin.setSingleStep(0.05)
+        self._rotation_spin.setDecimals(3)
+        self._rotation_spin.setToolTip(_('单位：弧度（radians）。正值逆时针，负值顺时针。完整一圈 ≈ 6.283'))
+        self._rotation_spin.valueChanged.connect(lambda v: self._set_prop('rotation', round(v, 3)))
+        form.addRow(self._rotation_label, self._rotation_spin)
+        self._rotation_label.setVisible(False)
+        self._rotation_spin.setVisible(False)
+
     def _build_appearance_section(self):
         self._app_group, form = self._make_group(_('外观 (精灵图)'))
 
@@ -400,12 +412,6 @@ class PropertiesPanel(QWidget):
         self._vscroll_edit.setPlaceholderText(_('滚动条名称引用'))
         self._vscroll_edit.textChanged.connect(lambda v: self._set_prop('verticalScrollbar', v))
         form.addRow(_('垂直滚动条:'), self._vscroll_edit)
-
-        self._rotation_spin = QDoubleSpinBox()
-        self._rotation_spin.setRange(-360.0, 360.0)
-        self._rotation_spin.setSingleStep(5.0)
-        self._rotation_spin.valueChanged.connect(lambda v: self._set_prop('rotation', round(v, 2)))
-        form.addRow(_('旋转 (rotation):'), self._rotation_spin)
 
     def _build_raw_section(self):
         """
@@ -686,6 +692,22 @@ class PropertiesPanel(QWidget):
             self._moveable_cb.setChecked(bool(props.get('moveable', False)))
             self._always_transparent_cb.setChecked(bool(props.get('alwaysTransparent', props.get('alwaystransparent', False))))
 
+            # 旋转：仅对非容器、非纯文本控件（即可使用精灵图的控件）显示
+            _show_rotation = node.widget_type not in (
+                'containerWindowType', 'scrollAreaType',
+                'instantTextBoxType', 'textBoxType', 'editBoxType',
+                'listboxType', 'smoothListboxType', 'gridBoxType',
+                'extendedScrollbarType', 'scrollbarType',
+                'overlappingElementsBoxType',
+            )
+            self._rotation_label.setVisible(_show_rotation)
+            self._rotation_spin.setVisible(_show_rotation)
+            if _show_rotation:
+                try:
+                    self._rotation_spin.setValue(float(props.get('rotation', 0.0)))
+                except (TypeError, ValueError):
+                    self._rotation_spin.setValue(0.0)
+
             # Appearance
             self._sprite_sel.set_value(str(props.get('spriteType', '')))
             self._quad_sel.set_value(str(props.get('quadTextureSprite', '')))
@@ -753,7 +775,6 @@ class PropertiesPanel(QWidget):
             self._clipping_cb.setChecked(_clip_on)
             self._smooth_scroll_cb.setChecked(bool(props.get('smooth_scrolling', False)))
             self._vscroll_edit.setText(str(props.get('verticalScrollbar', '')))
-            self._rotation_spin.setValue(float(props.get('rotation', 0.0)))
 
             # Show/hide sections
             is_text = node.widget_type in ('instantTextBoxType', 'textBoxType', 'editBoxType')
@@ -836,6 +857,7 @@ class PropertiesPanel(QWidget):
             self._node.properties.pop(key, None)
         else:
             self._node.properties[key] = value
+        self._node.mark_source_modified()
         # Update localization preview
         if key == 'buttonText':
             rm = ResourceManager.instance()

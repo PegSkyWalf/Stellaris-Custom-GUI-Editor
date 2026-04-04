@@ -16,6 +16,52 @@
 
 ---
 
+## [1.4.0] - 2026-04-05
+
+### 新功能
+
+- **版本更新检查**：启动后 3 秒自动在后台检查 GitHub Releases 最新版本，发现新版本时弹出提示对话框（含"前往下载"/"跳过此版本"/"稍后提醒"三个选项）；"帮助"菜单新增"检查更新"一项，支持随时手动触发；检查间隔、是否自动检查均可在设置中配置
+- **精灵图库大幅重构**：
+  - 标题栏新增统计徽章（显示当前显示数量 / 总数量）
+  - 新增类型过滤器（全部 / 固定尺寸 spriteType / 可拉伸 quadTextureSprite）
+  - 改进预览区：精灵名称、类型徽章、贴图路径、帧数信息一目了然；点击预览图可应用到选中控件
+  - 智能懒加载：仅渲染当前视口内可见的缩略图，大型模组下不再卡顿
+  - 右键菜单：在文件管理器中打开注册文件、复制精灵名 / GFX 注册代码 / 纹理路径
+- **事件关联面板增强**：
+  - 事件列表显示彩色类型标签（`[country_event]`、`[fleet_event]` 等）、事件标题与选项数
+  - 新增搜索框，支持按事件 ID 或标题实时过滤
+  - 双击事件条目直接应用 GUI 预览；右键菜单提供复制路径 / 事件 ID
+  - 详情面板改为彩色 HTML 格式，选项、文件路径清晰展示
+- **Button Effects 编辑器增强**：
+  - 文件操作改为树形右键菜单（新建文件、删除文件、在文件管理器中打开）
+  - 支持在模组目录直接新建 `.txt` 文件，并自动填入文件头模板
+  - 原版游戏文件标记为只读，防止意外覆盖
+- **欢迎向导新增语言选择步骤**：语言选择作为第 0 步显示在向导最前面；选项以各语言母语标注（简体中文 / English / …）；确认语言后其余向导页面以所选语言重新构建；支持返回修改语言并自动刷新后续页面
+
+### 改进
+
+- **保存时完整保留注释**（严重修复）：之前版本在修改任何控件属性后，该控件块内所有子控件的注释、格式信息均被清除；现在 patch 保存策略在节点自身属性改变时仅重写其直属属性头部，所有子节点原始文本（含注释）完整保留
+- **属性面板修改正确写入文件**：`_set_prop` 现在在修改属性后立即调用 `mark_source_modified()`，确保通过面板编辑的字体、文本、精灵名等属性在保存时不再被忽略（之前只有通过位置/尺寸 setter 修改的属性才会写入）
+- **旋转参数移入"位置与大小"区块**：旋转属性现对 `iconType`、`buttonType`、`effectButtonType` 等使用精灵图的控件可见，并统一放置在位置区块而非末尾的"其它"折叠区
+- **旋转方向修正**：编辑器画布中旋转方向与游戏内一致（正值逆时针），之前方向相反
+- **代码视图默认开启实时同步**：新建窗口时"实时同步"默认启用，代码编辑即时同步到画布，无需手动点击应用
+- **画布状态跨重载保留**：属性修改、撤销操作触发画布刷新时保留摄像机位置、图层可见性、虚拟编组可见性，不再跳回默认视图
+- **属性刷新精准化**：属性修改后只重绘受影响的节点及其祖先，不再触发全画布刷新，提升大型文件下的编辑流畅度
+- **跨平台文件管理器支持**：所有"在文件管理器中打开"操作统一为跨平台实现（Windows Explorer / macOS Finder / Linux xdg-open）
+- **精灵图来源文件追踪**：`SpriteInfo` 新增 `source_file` 字段，记录定义该精灵的 `.gfx` 文件路径，供精灵图库右键菜单使用
+- **主题颜色 API 扩展**：`ThemeManager` 新增 `bg_color()`、`base_color()`、`border_color()`、`input_bg_color()`、`is_dark()`、`secondary_bg_color()`、`selection_bg_color()` 等静态方法，UI 组件可获取更精细的主题颜色值
+- **数学表达式解析增强**：`@[expr]` 块内现支持裸标识符变量语法（如 `@[ radius / 2 ]`），与显式 `@varname` 写法兼容，修复部分使用标准写法的 Mod 文件解析报错
+- **GUIDocument 存储变量表**：解析时记录文件内所有 `@变量 = 值` 定义，供后续 round-trip 保存和表达式求值使用
+- **英文翻译条目补充**：新增 47 条英文翻译，覆盖文件操作、精灵图库、事件关联等模块
+
+### 内部
+
+- 新增模块：`src/core/update_checker.py`（GitHub Releases API 检查）
+- `src/codegen/gui_writer.py`：新增 `_write_widget_header()` 辅助函数，实现属性头部与子节点原始文本的分离 patch 策略
+- `src/ui/dialogs.py`：新增 `UpdateDialog` 更新提示对话框类
+
+---
+
 ## [1.2.0] - 2026-04-02
 
 > ⚠️ **重要提示：本工具会直接修改 `.gui` 文件。在使用前，请务必备份所有原始资源文件。**  
@@ -198,7 +244,8 @@
 
 ---
 
-[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.2.0...v1.4.0
 [1.2.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases/tag/v1.0.0

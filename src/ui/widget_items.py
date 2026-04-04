@@ -14,12 +14,13 @@ Position commit (reverse calculation):
     stellaris_pos = qt_tl - anchor + origo_offset
 """
 from __future__ import annotations
+import math
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QStyleOptionGraphicsItem, QWidget
 from PySide6.QtCore import Qt, QRectF, QPointF, QRect
 from PySide6.QtGui import (
-    QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QPixmap, QFontMetrics,
+    QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QPixmap, QFontMetrics, QTextDocument,
 )
 
 from ..core.gui_model import (
@@ -650,10 +651,14 @@ class GUIWidgetItem(QGraphicsRectItem):
         self._bg_bx_override = None
         self._bg_by_override = None
 
-        # Support direct textureFile path (common in instantTextBoxType, textBoxType)
-        tex_file = (node.properties.get('textureFile') or
-                    node.properties.get('texturefile') or
-                    node.properties.get('textureFilePath', ''))
+        # Support direct textureFile path (common in textBoxType).
+        # instantTextBoxType + font property: game ignores textureFile in this combination.
+        is_text_widget = node.widget_type == 'instantTextBoxType' and node.properties.get('font')
+        tex_file = '' if is_text_widget else (
+            node.properties.get('textureFile') or
+            node.properties.get('texturefile') or
+            node.properties.get('textureFilePath', '')
+        )
         if tex_file and isinstance(tex_file, str):
             abs_path = rm.resolve_texture_path(tex_file)
             if abs_path:
@@ -821,8 +826,25 @@ class GUIWidgetItem(QGraphicsRectItem):
             else:
                 painter.drawPixmap(rect.toRect(), self._bg_pixmap)
 
-        # ── Main sprite ──────────────────────────────────────────────────────
+        # ── Main sprite (with optional rotation) ────────────────────────────
+        rotation_rad = 0.0
+        rot_raw = self.node.properties.get('rotation', 0)
+        if rot_raw:
+            try:
+                rotation_rad = float(rot_raw)
+            except (TypeError, ValueError):
+                pass
+
         if self._sprite_pixmap and not self._sprite_pixmap.isNull():
+            # Apply rotation transform when rotation property is present
+            if rotation_rad != 0.0:
+                cx = rect.x() + rect.width() / 2
+                cy = rect.y() + rect.height() / 2
+                painter.save()
+                painter.translate(cx, cy)
+                painter.rotate(-math.degrees(rotation_rad))
+                painter.translate(-cx, -cy)
+
             if self._render_mode == 'nine_patch':
                 sprite_name = self.node.get_sprite_name()
                 info = ResourceManager.instance().get_sprite(sprite_name) if sprite_name else None
@@ -833,6 +855,9 @@ class GUIWidgetItem(QGraphicsRectItem):
                 # The widget's declared size= does NOT scale or center the image.
                 pm = self._sprite_pixmap
                 painter.drawPixmap(int(rect.x()), int(rect.y()), pm)
+
+            if rotation_rad != 0.0:
+                painter.restore()
         elif not self._bg_pixmap:
             # Placeholder fill
             fill = QColor(color)
@@ -938,19 +963,25 @@ class GUIWidgetItem(QGraphicsRectItem):
     }
 
     @staticmethod
-    def _parse_stellaris_text(text: str):
-        """Parse §X...§! color codes into segments: list of (text, QColor|None)."""
+    def _parse_stellaris_text(text: str, extra_colors: dict = None):
+        """Parse §X...§! color codes into segments: list of (text, QColor).
+
+        extra_colors overrides _STELLARIS_COLORS when provided (e.g. from fonts.gfx).
+        """
         import re
         segments = []
         pos = 0
         pattern = re.compile(r'§(.)(.*?)§!', re.DOTALL)
         default_color = QColor('#e8e0c8')
+        color_map = GUIWidgetItem._STELLARIS_COLORS
+        if extra_colors:
+            color_map = {**color_map, **extra_colors}
         for m in pattern.finditer(text):
             if m.start() > pos:
                 segments.append((text[pos:m.start()], default_color))
             code = m.group(1)
             seg_text = m.group(2)
-            color = GUIWidgetItem._STELLARIS_COLORS.get(code, default_color)
+            color = color_map.get(code, default_color)
             segments.append((seg_text, color))
             pos = m.end()
         if pos < len(text):
@@ -974,42 +1005,67 @@ class GUIWidgetItem(QGraphicsRectItem):
             if not resolved:
                 resolved = text_key
 
-        # Determine alignment
-        fmt = str(node.properties.get('format', 'center')).strip('"').lower()
+        # instantTextBoxType: default alignment is top-left; other types: center
+        is_itb = node.widget_type.lower() == 'instanttextboxtype'
+        default_fmt = 'left' if is_itb else 'center'
+        fmt = str(node.properties.get('format', default_fmt)).strip('"').lower()
         halign = {
-            'left':       Qt.AlignmentFlag.AlignLeft,
-            'right':      Qt.AlignmentFlag.AlignRight,
-            'center':     Qt.AlignmentFlag.AlignHCenter,
-            'centre':     Qt.AlignmentFlag.AlignHCenter,
+            'left':        Qt.AlignmentFlag.AlignLeft,
+            'right':       Qt.AlignmentFlag.AlignRight,
+            'center':      Qt.AlignmentFlag.AlignHCenter,
+            'centre':      Qt.AlignmentFlag.AlignHCenter,
             'center_left': Qt.AlignmentFlag.AlignLeft,
-        }.get(fmt, Qt.AlignmentFlag.AlignHCenter)
+        }.get(fmt, Qt.AlignmentFlag.AlignLeft if is_itb else Qt.AlignmentFlag.AlignHCenter)
+        valign = Qt.AlignmentFlag.AlignTop if is_itb else Qt.AlignmentFlag.AlignVCenter
 
         font = QFont('Microsoft YaHei', 9)
         painter.setFont(font)
 
+        # text_color_code property overrides default base color
         color_code = str(node.properties.get('text_color_code', '')).strip('"')
-        base_color = self._STELLARIS_COLORS.get(color_code, QColor('#e8e0c8'))
+        game_colors = rm.get_text_colors()
+        color_map = {**self._STELLARIS_COLORS, **game_colors}
+        base_color = color_map.get(color_code, QColor('#e8e0c8'))
 
-        # £key£ text icons → GFX_text_<key> sprites (may live in any scanned .gfx file)
+        draw_rect = rect.adjusted(2, 2, -2, -2)
+
+        # £key£ text icons → GFX_text_<key> sprites
         if '£' in resolved:
             paint_localized_text_with_text_icons(
                 painter, rect, resolved, font, halign, base_color, rm)
             return
 
         if '§' in resolved:
-            segments = self._parse_stellaris_text(resolved)
-            plain = ''.join(s[0] for s in segments)
-            painter.setPen(QPen(base_color))
-            painter.drawText(
-                rect.adjusted(2, 2, -2, -2),
-                halign | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
-                plain,
-            )
+            # Render multi-colored segments using QTextDocument
+            segments = self._parse_stellaris_text(resolved, game_colors)
+            html_parts = []
+            for seg_text, col in segments:
+                safe = (seg_text.replace('&', '&amp;')
+                               .replace('<', '&lt;')
+                               .replace('>', '&gt;')
+                               .replace('\n', '<br>'))
+                html_parts.append(f'<span style="color:{col.name()};">{safe}</span>')
+            align_css = ('center' if halign == Qt.AlignmentFlag.AlignHCenter
+                         else 'right' if halign == Qt.AlignmentFlag.AlignRight
+                         else 'left')
+            tdoc = QTextDocument()
+            tdoc.setDefaultFont(font)
+            tdoc.setHtml(f'<div style="text-align:{align_css};">{"".join(html_parts)}</div>')
+            tdoc.setTextWidth(draw_rect.width())
+            th = tdoc.size().height()
+            if valign == Qt.AlignmentFlag.AlignVCenter and th < draw_rect.height():
+                ty = draw_rect.y() + (draw_rect.height() - th) / 2
+            else:
+                ty = draw_rect.y()
+            painter.save()
+            painter.translate(draw_rect.x(), ty)
+            tdoc.drawContents(painter)
+            painter.restore()
         else:
             painter.setPen(QPen(base_color))
             painter.drawText(
-                rect.adjusted(2, 2, -2, -2),
-                halign | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
+                draw_rect,
+                halign | valign | Qt.TextFlag.TextWordWrap,
                 resolved,
             )
 

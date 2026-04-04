@@ -207,6 +207,11 @@ class ThemeManager:
     _current_muted: str = '#888888'
     _current_accent: str = '#4a9fd4'
     _current_fg: str = '#dddddd'
+    _current_bg: str = '#1e1e1e'        # Window 背景
+    _current_base: str = '#141414'      # 输入框/列表基底
+    _current_border: str = '#333333'    # 通用边框色
+    _current_input_bg: str = '#2d2d2d'  # 按钮/输入框背景
+    _dark: bool = True                  # 当前是否为深色主题
 
     @staticmethod
     def muted_color() -> str:
@@ -222,6 +227,54 @@ class ThemeManager:
     def fg_color() -> str:
         """返回当前主题的前景文本颜色。"""
         return ThemeManager._current_fg
+
+    @staticmethod
+    def bg_color() -> str:
+        """返回窗口/面板背景色（QPalette.Window）。"""
+        return ThemeManager._current_bg
+
+    @staticmethod
+    def base_color() -> str:
+        """返回输入框/列表基底色（QPalette.Base），深色主题下比 bg 更暗。"""
+        return ThemeManager._current_base
+
+    @staticmethod
+    def border_color() -> str:
+        """返回通用边框/分割线颜色。"""
+        return ThemeManager._current_border
+
+    @staticmethod
+    def input_bg_color() -> str:
+        """返回按钮/输入框背景色（QPalette.Button）。"""
+        return ThemeManager._current_input_bg
+
+    @staticmethod
+    def is_dark() -> bool:
+        """当前是否为深色主题（dark 或 dark_blue）。"""
+        return ThemeManager._dark
+
+    @staticmethod
+    def secondary_bg_color() -> str:
+        """介于 bg 和 base 之间的次级背景色，用于卡片/区块。"""
+        # 深色：比 Window 略深；浅色：比 Window 略浅
+        if ThemeManager._dark:
+            bg = QColor(ThemeManager._current_bg)
+            return bg.darker(130).name()
+        else:
+            bg = QColor(ThemeManager._current_bg)
+            return bg.darker(105).name()
+
+    @staticmethod
+    def selection_bg_color() -> str:
+        """返回基于强调色的选中行背景（半透明混合）。"""
+        a = QColor(ThemeManager._current_accent)
+        a.setAlpha(60)
+        # 混合到 base 上
+        base = QColor(ThemeManager._current_base)
+        r = (base.red()   * (255 - 60) + a.red()   * 60) // 255
+        g = (base.green() * (255 - 60) + a.green() * 60) // 255
+        b = (base.blue()  * (255 - 60) + a.blue()  * 60) // 255
+        return QColor(r, g, b).name()
 
     @staticmethod
     def apply(app: QApplication, theme: str = DEFAULT_THEME,
@@ -259,6 +312,16 @@ class ThemeManager:
         ThemeManager._current_fg = fg
         ThemeManager._current_accent = effective_accent
         ThemeManager._current_muted = muted
+        ThemeManager._dark = is_dark_theme(theme)
+        ThemeManager._current_bg = palette.color(QPalette.ColorRole.Window).name()
+        ThemeManager._current_base = palette.color(QPalette.ColorRole.Base).name()
+        ThemeManager._current_input_bg = palette.color(QPalette.ColorRole.Button).name()
+        if theme == 'light':
+            ThemeManager._current_border = '#cccccc'
+        elif theme == 'dark_blue':
+            ThemeManager._current_border = '#2a4060'
+        else:
+            ThemeManager._current_border = '#333333'
 
         # 更新图标提供器的主题颜色
         try:

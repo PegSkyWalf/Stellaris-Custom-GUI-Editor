@@ -806,6 +806,7 @@ def parse_gui_file(path: str) -> GUIDocument:
     doc._raw_source = result.raw_source
     doc._guitypes_span = result.guitypes_span
     doc._guitypes_inner_span = result.guitypes_inner_span
+    doc.variables = result.variables
     _process_pairs_into_doc_with_spans(result.pairs, result.widget_spans, doc)
     return doc
 
@@ -823,6 +824,7 @@ def parse_gui_text(text: str, file_path: str = '<text>') -> GUIDocument:
         doc._raw_source = result.raw_source
         doc._guitypes_span = result.guitypes_span
         doc._guitypes_inner_span = result.guitypes_inner_span
+        doc.variables = result.variables
         _process_pairs_into_doc_with_spans(result.pairs, result.widget_spans, doc)
         return doc
     except Exception:

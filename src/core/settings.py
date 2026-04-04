@@ -58,6 +58,12 @@ _DEFAULTS = {
 
     # 预设（内部使用）
     'presets': {},
+
+    # 更新检查
+    'check_update_on_startup': True,
+    'last_update_check': '',    # ISO 日期字符串，如 '2026-04-04'
+    'skip_version': '',         # 用户选择跳过的版本号，如 'v1.4.0'
+    'update_check_interval_days': 1,
 }
 
 

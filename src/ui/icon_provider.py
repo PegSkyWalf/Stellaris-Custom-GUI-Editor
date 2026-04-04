@@ -65,6 +65,11 @@ _SVG_PATHS: Dict[str, str] = {
     'chevron-right': '<path d="M6 3l5 5-5 5" fill="none" stroke="{color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
     'plus': '<path d="M8 3v10M3 8h10" stroke="{color}" stroke-width="1.5" stroke-linecap="round"/>',
     'minus': '<path d="M3 8h10" stroke="{color}" stroke-width="1.5" stroke-linecap="round"/>',
+    'folder-plus': '<path d="M2 4c0-.6.4-1 1-1h3l2 2h6c.6 0 1 .4 1 1v6c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1V4z" fill="none" stroke="{color}" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 7v3M6.5 8.5h3" stroke="{color}" stroke-width="1.2" stroke-linecap="round"/>',
+    'folder-child': '<path d="M2 5c0-.6.4-1 1-1h2.5l1.5 1.5H13c.6 0 1 .4 1 1V12c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1V5z" fill="none" stroke="{color}" stroke-width="1.2" stroke-linejoin="round"/><path d="M4 3v2" stroke="{color}" stroke-width="1" stroke-linecap="round" stroke-dasharray="1 1"/><path d="M7 9.5l1.5 1.5 2-3" fill="none" stroke="{color}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>',
+    'group-from-sel': '<rect x="2" y="2" width="12" height="12" rx="1.5" fill="none" stroke="{color}" stroke-width="1" stroke-dasharray="2 1.5"/><path d="M5 5h6v4H5z" fill="none" stroke="{color}" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 9v3M6.5 10.5h3" stroke="{color}" stroke-width="1.2" stroke-linecap="round"/>',
+    'add-to-group': '<rect x="8" y="4" width="6" height="8" rx="1" fill="none" stroke="{color}" stroke-width="1.2"/><path d="M11 7v2M10 8h2" stroke="{color}" stroke-width="1.2" stroke-linecap="round"/><path d="M2 8h5M4.5 5.5L2 8l2.5 2.5" fill="none" stroke="{color}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
+    'remove-from-group': '<rect x="8" y="4" width="6" height="8" rx="1" fill="none" stroke="{color}" stroke-width="1.2"/><path d="M10 8h2" stroke="{color}" stroke-width="1.2" stroke-linecap="round"/><path d="M7 8H2M4.5 5.5L2 8l2.5 2.5" fill="none" stroke="{color}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
 
     # --- 对齐操作 ---
     'align-left': '<path d="M3 2v12" stroke="{color}" stroke-width="1.5" stroke-linecap="round"/><rect x="5" y="4" width="8" height="3" rx=".5" fill="{color}"/><rect x="5" y="9" width="5" height="3" rx=".5" fill="{color}"/>',

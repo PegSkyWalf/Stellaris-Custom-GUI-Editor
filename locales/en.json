@@ -757,5 +757,47 @@
   "更改语言后需重启应用完全生效。": "Restart the application for the language change to take full effect.",
 
   "显示": "Show",
-  "隐藏": "Hidden"
+  "隐藏": "Hidden",
+
+  "复制路径": "Copy Path",
+  "复制文件路径": "Copy File Path",
+  "复制目录路径": "Copy Directory Path",
+  "在文件管理器中显示": "Show in File Manager",
+  "在文件管理器中打开": "Open in File Manager",
+  "在文件管理器中打开注册文件": "Open GFX File in File Manager",
+  "复制注册文件路径": "Copy GFX File Path",
+  "复制精灵图名称": "Copy Sprite Name",
+  "复制纹理路径": "Copy Texture Path",
+  "复制事件 ID": "Copy Event ID",
+  "应用事件上下文": "Apply Event Context",
+
+  "事件关联": "Event Links",
+  "未加载 GUI": "No GUI loaded",
+  "搜索事件 ID / 标题…": "Search event ID / title…",
+  "▶ 应用上下文": "▶ Apply Context",
+  "将选中事件的上下文（文本、图像、选项）加载到画布": "Load the selected event's context (text, images, options) onto the canvas",
+  "✕ 清除": "✕ Clear",
+  "清除事件上下文，恢复空白画布": "Clear event context and restore blank canvas",
+  "事件详情": "Event Details",
+  "标题:": "Title:",
+  "描述:": "Description:",
+  "选项 ({0}):": "Options ({0}):",
+
+  "精灵图库": "Sprite Library",
+  "选择精灵图以预览": "Select a sprite to preview",
+  "搜索精灵图名称…": "Search sprite name…",
+  "类型:": "Type:",
+  "全部": "All",
+  "可拉伸": "Scalable",
+  "注册文件:": "GFX file:",
+  "类型:": "Type:",
+  "纹理:": "Texture:",
+  "帧数:": "Frames:",
+  "▶ 分配给选中控件": "▶ Assign to Selected Widget",
+
+  "新建顶层编组": "New Top-Level Group",
+  "在当前组内新建子组": "New Subgroup in Current Group",
+  "将画布选中控件创建为新编组": "Create Group from Canvas Selection",
+  "将画布中选中的控件加入当前编组": "Add Canvas Selection to Current Group",
+  "将选中的控件从当前组中移除": "Remove Selected Widgets from Current Group"
 }

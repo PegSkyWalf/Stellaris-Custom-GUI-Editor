@@ -462,15 +462,15 @@ class GUIScene(QGraphicsScene):
         fallback_reg = fallback_reg or []
         fallback_last = fallback_last or []
 
-        # Collect option GUI names in order
+        # Collect option GUI names in order.
+        # Per-option custom_gui takes priority; event-level custom_gui_option is the
+        # default template applied to EVERY option that doesn't have its own override.
         option_gui_names: list = []
-        if event_info.custom_gui_option:
-            option_gui_names.append((event_info.custom_gui_option,
-                                     opt_texts[0] if opt_texts else ''))
         for i, opt in enumerate(event_info.options):
-            gui_n = getattr(opt, 'custom_gui', '')
+            gui_n = getattr(opt, 'custom_gui', '') or event_info.custom_gui_option or ''
             if gui_n:
-                opt_loc = rm.get_loc(opt.name) if opt.name else ''
+                opt_loc = rm.get_loc(opt.name) if opt.name else (
+                    opt_texts[i] if i < len(opt_texts) else '')
                 option_gui_names.append((gui_n, opt_loc))
 
         # Fallback: no explicit custom_gui_option / per-option custom_gui — use
@@ -498,7 +498,8 @@ class GUIScene(QGraphicsScene):
             if root_node is None:
                 continue
             resolve_editor_layout_sizes([root_node], cw, ch, rm)
-            rw, rh = root_node.size
+            els = getattr(root_node, '_editor_layout_size', None)
+            rw, rh = els if els else root_node.size
             slot_h = max(rh, 30)
             try:
                 self._build_option_gui_item(root_node, option_list_item,

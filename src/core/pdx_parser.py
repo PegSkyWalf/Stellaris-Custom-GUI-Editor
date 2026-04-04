@@ -49,6 +49,8 @@ class ParseResultWithSpans:
     guitypes_span: Optional[SourceSpan] = None
     # guiTypes 块内部（{ 之后到 } 之前）的 span
     guitypes_inner_span: Optional[SourceSpan] = None
+    # 文件内 @变量 定义表（供 GUIDocument 保存）
+    variables: Dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +208,7 @@ class PDXParser:
             widget_spans=widget_spans,
             guitypes_span=guitypes_span,
             guitypes_inner_span=guitypes_inner_span,
+            variables=dict(self.variables),
         )
 
     def _parse_pairs_with_spans(self, out_pairs: list) -> List[WidgetSpanInfo]:
@@ -329,18 +332,30 @@ class PDXParser:
             return self._parse_scalar()
 
     def _eval_expr(self, expr_str: str) -> Any:
-        """Evaluate a @[ ... ] math expression."""
+        """Evaluate a @[ ... ] math expression.
+
+        Inside @[ ] Stellaris uses bare variable names (without @), e.g.
+        @[ shroudPlaneRadius / 2 ].  Also supports @name syntax inside brackets.
+        """
         # Strip "@[" and "]"
         inner = expr_str[2:-1].strip()
-        # Replace @var_name references with their numeric values
+
         def _replace_var(m):
-            varname = '@' + m.group(1)
-            val = self.variables.get(varname, 0)
-            try:
-                return str(float(val))
-            except (TypeError, ValueError):
-                return '0'
+            name = m.group(1)  # identifier text (no leading @)
+            # Look up with @name first (how parser stores them), then bare name
+            val = self.variables.get('@' + name, self.variables.get(name, None))
+            if val is not None:
+                try:
+                    return str(float(val))
+                except (TypeError, ValueError):
+                    pass
+            return '0'
+
+        # Pass 1: explicit @varname syntax inside brackets
         inner = re.sub(r'@([A-Za-z_][A-Za-z0-9_]*)', _replace_var, inner)
+        # Pass 2: bare identifier syntax (Stellaris standard: @[ varName / 2 ])
+        inner = re.sub(r'\b([A-Za-z_][A-Za-z0-9_]*)\b', _replace_var, inner)
+
         # Evaluate safely using only basic arithmetic
         try:
             # Only allow digits, spaces, and arithmetic operators

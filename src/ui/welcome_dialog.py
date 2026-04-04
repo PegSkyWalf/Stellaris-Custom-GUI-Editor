@@ -1,7 +1,8 @@
 """
 首次启动向导 — 在用户第一次打开应用时引导完成基础配置。
 
-共 4 步：
+共 5 步（含语言选择）：
+  0. 语言选择（最先显示，确认后其余页面以所选语言构建）
   1. 欢迎页
   2. 自动检测 / 手动指定游戏目录
   3. 选择界面主题
@@ -21,7 +22,8 @@ from PySide6.QtGui import QFont, QPixmap, QPainter, QColor, QLinearGradient
 
 from ..core.settings import AppSettings
 from ..core.theme_manager import AVAILABLE_THEMES, ThemeManager, DEFAULT_THEME
-from ..core.i18n import _
+from ..core.i18n import _, get_available_languages, get_language_display_name
+from ..core import i18n as _i18n
 
 
 # ---------------------------------------------------------------------------
@@ -100,15 +102,9 @@ class WelcomeDialog(QDialog):
         btn_row.addWidget(self._next_btn)
         layout.addLayout(btn_row)
 
-        # 构建各步骤页面
-        self._pages = [
-            self._build_page_welcome(),
-            self._build_page_game_dir(),
-            self._build_page_theme(),
-            self._build_page_finish(),
-        ]
-        for page in self._pages:
-            self._stack.addWidget(page)
+        # 第 0 步：语言选择页（仅先构建此页，其余在确认语言后延迟构建）
+        self._pages = [self._build_page_language()]
+        self._stack.addWidget(self._pages[0])
 
         self._current = 0
         self._update_nav()
@@ -116,6 +112,75 @@ class WelcomeDialog(QDialog):
     # ------------------------------------------------------------------
     # 页面构建
     # ------------------------------------------------------------------
+
+    def _build_page_language(self) -> QWidget:
+        """语言选择页（第 0 步）：标题使用双语，不依赖翻译函数。"""
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(40, 30, 40, 20)
+        lay.setSpacing(12)
+
+        # 双语标题，无论系统语言均可理解
+        title = QLabel('语言 / Language')
+        title.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(title)
+
+        subtitle = QLabel('请选择界面语言 / Please select UI language')
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet('font-size:10px;')
+        lay.addWidget(subtitle)
+
+        lay.addSpacing(10)
+
+        self._lang_group = QButtonGroup(self)
+        current_lang = self._settings.get('ui_language', 'zh_CN')
+
+        for lang in get_available_languages():
+            rb = QRadioButton(get_language_display_name(lang))
+            rb.setProperty('lang_code', lang)
+            rb.setStyleSheet('font-size:12px; padding: 4px 0;')
+            if lang == current_lang:
+                rb.setChecked(True)
+            self._lang_group.addButton(rb)
+            lay.addWidget(rb, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        lay.addStretch()
+        return w
+
+    def _apply_language_selection(self):
+        """读取语言页选中的语言，立即生效并持久化到设置。"""
+        checked = self._lang_group.checkedButton()
+        if checked:
+            lang = checked.property('lang_code')
+            if lang:
+                _i18n.set_language(lang)
+                self._settings.set('ui_language', lang)
+
+    def _rebuild_remaining_pages(self):
+        """在语言确认后，重建剩余页面（此时翻译已生效）。
+        若之前已构建过（用户返回语言页改变语言），先移除旧页面。
+        """
+        # 移除旧的剩余页面（保留索引 0 的语言页）
+        while len(self._pages) > 1:
+            old_page = self._pages.pop()
+            self._stack.removeWidget(old_page)
+            old_page.deleteLater()
+
+        # 以当前语言重新构建后续页面
+        remaining = [
+            self._build_page_welcome(),
+            self._build_page_game_dir(),
+            self._build_page_theme(),
+            self._build_page_finish(),
+        ]
+        for page in remaining:
+            self._pages.append(page)
+            self._stack.addWidget(page)
+
+        # 同步已创建的静态 UI 文字到新语言
+        self.setWindowTitle(_('欢迎使用 — 群星 GUI 编辑器'))
+        self._back_btn.setText(_('上一步'))
 
     def _build_page_welcome(self) -> QWidget:
         w = QWidget()
@@ -286,14 +351,31 @@ class WelcomeDialog(QDialog):
 
     def _update_nav(self):
         total = len(self._pages)
-        self._step_label.setText(_('第 ') + str(self._current + 1) + _(' 步，共 ') + str(total) + _(' 步'))
-        self._back_btn.setEnabled(self._current > 0)
-        if self._current == total - 1:
-            self._next_btn.setText(_('开始使用'))
-        else:
+        if self._current == 0:
+            # 语言页：固定双语提示，"上一步"禁用，"下一步"始终显示
+            self._step_label.setText('Language / 语言')
+            self._back_btn.setEnabled(False)
             self._next_btn.setText(_('下一步 →'))
+        else:
+            # 其余页：显示步骤计数（语言页不计入步骤编号）
+            self._step_label.setText(
+                _('第 ') + str(self._current) + _(' 步，共 ') + str(total - 1) + _(' 步')
+            )
+            self._back_btn.setEnabled(True)
+            if self._current == total - 1:
+                self._next_btn.setText(_('开始使用'))
+            else:
+                self._next_btn.setText(_('下一步 →'))
 
     def _go_next(self):
+        if self._current == 0:
+            # 语言页：应用语言，构建后续页面，然后前进
+            self._apply_language_selection()
+            self._rebuild_remaining_pages()
+            self._current = 1
+            self._stack.setCurrentIndex(1)
+            self._update_nav()
+            return
         if self._current == len(self._pages) - 1:
             self._save_and_accept()
             return
@@ -310,12 +392,13 @@ class WelcomeDialog(QDialog):
 
     def _save_current_page(self):
         """在离开页面时保存当前页的设置。"""
-        if self._current == 1:
+        # 页面索引：0=语言, 1=欢迎, 2=游戏目录, 3=主题, 4=完成
+        if self._current == 2:
             game_dir = self._game_dir_edit.text().strip()
             if game_dir and os.path.isdir(game_dir):
                 self._settings.game_dir = game_dir
 
-        elif self._current == 2:
+        elif self._current == 3:
             checked = self._theme_group.checkedButton()
             if checked:
                 theme_key = checked.property('theme_key')

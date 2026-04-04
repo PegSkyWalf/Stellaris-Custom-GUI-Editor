@@ -128,7 +128,7 @@ class CodeView(QWidget):
         super().__init__(parent)
         self._doc: Optional[GUIDocument] = None
         self._auto_update = True
-        self._auto_apply = False           # auto-apply code edits to canvas
+        self._auto_apply = True            # auto-apply code edits to canvas
         self._large_file_mode = False
         self._writing_to_editor = False    # prevents feedback loop when we update editor text
 
@@ -172,7 +172,7 @@ class CodeView(QWidget):
         header_row.addWidget(self._auto_cb)
 
         self._auto_apply_cb = QCheckBox(_('实时同步'))
-        self._auto_apply_cb.setChecked(False)
+        self._auto_apply_cb.setChecked(True)
         self._auto_apply_cb.setToolTip(_('编辑代码后1.5秒自动同步到画布（实时双向同步）'))
         self._auto_apply_cb.stateChanged.connect(self._on_auto_apply_toggled)
         header_row.addWidget(self._auto_apply_cb)
@@ -203,6 +203,9 @@ class CodeView(QWidget):
         font.setFixedPitch(True)
         self._editor.setFont(font)
         self._editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        # Tab stop = 4 字符宽，与生成器输出的 \t 缩进对齐
+        from PySide6.QtGui import QFontMetrics
+        self._editor.setTabStopDistance(QFontMetrics(font).horizontalAdvance(' ') * 4)
         self._editor.document().setUndoRedoEnabled(False)
         # Highlighter init with dark_mode=True; update_theme() will correct it after
         self._highlighter = PDXHighlighter(self._editor.document(), dark_mode=True)
@@ -265,12 +268,12 @@ class CodeView(QWidget):
         """Called whenever the editor content changes (user typing or programmatic update)."""
         if self._writing_to_editor:
             return   # avoid feedback loop when we update editor programmatically
-        if self._auto_apply and not self._large_file_mode:
+        if self._auto_apply:
             self._apply_timer.start()
 
     def _auto_apply_edits(self):
         """Debounced auto-apply: parse code and emit code_applied signal."""
-        if not self._auto_apply or self._large_file_mode:
+        if not self._auto_apply:
             return
         self.code_applied.emit(self._editor.toPlainText())
 
@@ -302,27 +305,17 @@ class CodeView(QWidget):
             code = write_document_preserving(self._doc)
             line_count = code.count('\n') + 1
 
-            # Detect large file: disable highlighter and auto-apply (code→canvas)
-            # Note: canvas→code sync always runs regardless of large file mode
+            # 大文件提示（仅提示，不禁用任何功能）
             is_large = line_count > _LARGE_DOC_LINE_THRESHOLD
             if is_large and not self._large_file_mode:
                 self._large_file_mode = True
-                self._auto_update = False
-                self._auto_cb.setChecked(False)
-                # Detach highlighter to avoid O(n) re-highlighting on every change
-                if self._highlighter:
-                    self._highlighter.setDocument(None)
-                    self._highlighter = None
                 self._large_file_bar.setText(
-                    _('[!] 大文件模式 (') + str(line_count)
-                    + _(' 行) — 已禁用自动应用和语法高亮以保持流畅。  代码视图仍会跟随画布更新。')
+                    _('[!] 大文件 (') + str(line_count)
+                    + _(' 行) — 代码视图可能存在轻微延迟。')
                 )
                 self._large_file_bar.show()
             elif not is_large and self._large_file_mode:
-                # File became small again (e.g. after reset)
                 self._large_file_mode = False
-                if self._highlighter is None:
-                    self._highlighter = PDXHighlighter(self._editor.document())
                 self._large_file_bar.hide()
 
             cursor_pos = self._editor.textCursor().position()

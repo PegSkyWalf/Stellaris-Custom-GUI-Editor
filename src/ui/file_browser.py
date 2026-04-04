@@ -11,12 +11,27 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
+from PySide6.QtWidgets import QApplication
 
 from ..core.resource_manager import ResourceManager
 from ..core.theme_manager import ThemeManager
 from ..core.i18n import _
 from ..core.logger import get_logger
 _log = get_logger('file_browser')
+
+
+def _reveal_in_explorer(path: str):
+    """在系统文件管理器中显示文件/目录（跨平台）。"""
+    import sys, subprocess
+    if sys.platform == 'win32':
+        if os.path.isfile(path):
+            subprocess.Popen(['explorer', '/select,', os.path.normpath(path)])
+        else:
+            os.startfile(os.path.normpath(path))
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', '-R', path] if os.path.isfile(path) else ['open', path])
+    else:
+        subprocess.Popen(['xdg-open', os.path.dirname(path) if os.path.isfile(path) else path])
 
 
 class FileBrowser(QWidget):
@@ -144,10 +159,13 @@ class FileBrowser(QWidget):
                 menu.addAction(_('在编辑器中打开')).triggered.connect(
                     lambda: self.open_file_requested.emit(path))
             menu.addAction(_('在资源管理器中显示')).triggered.connect(
-                lambda: os.startfile(os.path.dirname(path)))
+                lambda: _reveal_in_explorer(path))
         elif os.path.isdir(path):
             menu.addAction(_('在资源管理器中打开')).triggered.connect(
-                lambda: os.startfile(path))
+                lambda: _reveal_in_explorer(path))
+        menu.addSeparator()
+        menu.addAction(_('复制路径')).triggered.connect(
+            lambda: QApplication.clipboard().setText(path))
         menu.exec(self._tree.viewport().mapToGlobal(pos))
 
     def _filter(self, text: str):

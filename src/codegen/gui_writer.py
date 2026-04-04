@@ -356,11 +356,48 @@ def write_document_preserving(doc: GUIDocument) -> str:
     return result
 
 
+def _write_widget_header(node: WidgetNode, level: int) -> List[str]:
+    """生成 widget 的头部（类型 + 直属属性，不含子节点和闭合括号）。"""
+    ind = _indent(level)
+    ind1 = _indent(level + 1)
+    lines = [f'{ind}{node.widget_type} = {{']
+    props = node.properties
+    written = set()
+    for key in _PROPERTY_ORDER:
+        if key in props:
+            val = props[key]
+            if key in ('orientation', 'Orientation', 'origo', 'origin'):
+                if val is None or (isinstance(val, str) and not str(val).strip()):
+                    continue
+            if key == 'size' and isinstance(val, dict):
+                lines.append(f'{ind1}size = {_format_size_block(val)}')
+            elif key in _PROPERTY_BLOCK_KEYS and isinstance(val, dict):
+                lines.extend(write_property_block(key, val, level + 1))
+            else:
+                lines.append(f'{ind1}{key} = {_format_value(val, level + 1)}')
+            written.add(key)
+    for key in sorted(props.keys()):
+        if key in written:
+            continue
+        val = props[key]
+        if key in ('orientation', 'Orientation', 'origo', 'origin'):
+            if val is None or (isinstance(val, str) and not str(val).strip()):
+                continue
+        if key == 'size' and isinstance(val, dict):
+            lines.append(f'{ind1}size = {_format_size_block(val)}')
+        elif key in _PROPERTY_BLOCK_KEYS and isinstance(val, dict):
+            lines.extend(write_property_block(key, val, level + 1))
+        elif key not in _CHILD_WIDGET_KEYS:
+            lines.append(f'{ind1}{key} = {_format_value(val, level + 1)}')
+    return lines
+
+
 def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
     """递归 patch 一个 widget：仅重新生成自身被修改的部分。
 
     策略：
-    - 如果节点自身被修改（_source_modified=True）→ 完全重新生成
+    - 如果节点自身被修改（_source_modified=True）且有原始源码 →
+        重新生成头部（属性），但保留所有子节点的原始文本（含注释）
     - 如果节点自身未修改但有子节点被修改 → 在原始源码中只 patch 被修改的子节点
     - 如果节点没有 source_span → 完全生成（新节点）
     """
@@ -369,8 +406,63 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
         return '\n'.join(write_widget(node, level=level))
 
     if node._source_modified:
-        # 自身属性被修改，完全重新生成
-        return '\n'.join(write_widget(node, level=level))
+        # 自身属性被修改，但尽量保留子节点原始文本（含注释）
+        span_start = node._source_span.start
+        span_end = node._source_span.end
+        widget_source = raw[span_start:span_end]
+
+        # 找到有原始 span 的子节点（按位置排序）
+        children_with_spans = sorted(
+            [(c, c._source_span.start, c._source_span.end)
+             for c in node.children if c._source_span],
+            key=lambda x: x[1]
+        )
+
+        if not children_with_spans:
+            # 没有子节点有 span（叶节点或全新子节点）→ 完全重新生成
+            return '\n'.join(write_widget(node, level=level))
+
+        # 找到第一个子节点所在行的起始位置
+        first_child_abs_start = children_with_spans[0][1]
+        first_child_line_start = _line_indent_start(raw, first_child_abs_start)
+        first_child_rel = first_child_line_start - span_start
+
+        # 生成新头部（类型 + 属性，无子节点、无闭合括号）
+        new_header = '\n'.join(_write_widget_header(node, level))
+
+        # 子节点区域：从第一个子节点的行首到 widget 末尾（含闭合括号）
+        children_section = widget_source[first_child_rel:]
+
+        # 对子节点区域内被修改的子节点递归 patch
+        child_patches = []
+        for child, child_abs_start, child_abs_end in children_with_spans:
+            if child.is_subtree_modified():
+                child_level = _detect_indent_level(raw, child_abs_start)
+                child_text = _patch_widget_recursive(child, raw, child_level)
+                if child._source_modified:
+                    rel_start = _line_indent_start(raw, child_abs_start) - first_child_line_start
+                else:
+                    rel_start = child_abs_start - first_child_line_start
+                rel_end = child_abs_end - first_child_line_start
+                child_patches.append((rel_start, rel_end, child_text))
+
+        result = children_section
+        child_patches.sort(key=lambda p: p[0], reverse=True)
+        for rel_start, rel_end, replacement in child_patches:
+            result = result[:rel_start] + replacement + result[rel_end:]
+
+        # 插入没有 span 的新子节点（在闭合括号之前）
+        new_children = [c for c in node.children if not c._source_span]
+        if new_children:
+            insert_parts = ['\n'.join(write_widget(c, level=level + 1)) for c in new_children]
+            insert_text = '\n\n' + '\n\n'.join(insert_parts) + '\n'
+            last_brace = result.rfind('}')
+            if last_brace >= 0:
+                line_start = result.rfind('\n', 0, last_brace)
+                insert_pos = line_start if line_start >= 0 else last_brace
+                result = result[:insert_pos] + insert_text + result[insert_pos:]
+
+        return new_header + '\n' + result
 
     # 自身未修改，但子树中有修改 — 递归 patch 子节点
     span_start = node._source_span.start

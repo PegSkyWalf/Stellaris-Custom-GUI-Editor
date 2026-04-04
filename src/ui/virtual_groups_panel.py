@@ -34,7 +34,7 @@ class VirtualGroupsPanel(QWidget):
 
     Layout (Qt Designer-inspired):
     ┌──────────────────────────────────────────┐
-    │  [+组] [+子] [重命名] [删除] [可见] [<添加] [>移除] │  ← toolbar
+    │  [📁+] [📁子] [📦选] [重命名] [删除] [眼] | [→组] [←移]  │  ← toolbar
     ├──────────────────────────────────────────┤
     │  Group tree (with member sub-items)       │
     ├──────────────────────────────────────────┤
@@ -77,18 +77,17 @@ class VirtualGroupsPanel(QWidget):
             tb.addAction(a)
             return a
 
-        _act(_('组'), _('新建顶层编组'), self._create_root_group, 'plus')
-        _act(_('子'), _('在当前组内新建子组'), self._create_child_group, 'plus')
+        _act('', _('新建顶层编组'), self._create_root_group, 'folder-plus')
+        _act('', _('在当前组内新建子组'), self._create_child_group, 'folder-child')
+        _act('', _('将画布选中控件创建为新编组'), self._create_group_from_selection, 'group-from-sel')
         tb.addSeparator()
         _act(_('重命名'), _('重命名当前组'), self._rename_selected)
         _act('', _('删除当前组'), self._delete_selected, 'trash')
         tb.addSeparator()
         _act('', _('切换可见性'), self._toggle_visibility_selected, 'eye')
         tb.addSeparator()
-        _act(_('从选中建组'), _('将画布选中控件创建为新编组'), self._create_group_from_selection, 'plus')
-        tb.addSeparator()
-        _act(_(' 添加选中控件'), _('将画布中选中的控件加入当前编组'), self._add_canvas_selection, 'chevron-left')
-        _act(_(' 移除选中控件'), _('将选中的控件从当前组中移除'), self._remove_canvas_selection, 'chevron-right')
+        _act('', _('将画布中选中的控件加入当前编组'), self._add_canvas_selection, 'add-to-group')
+        _act('', _('将选中的控件从当前组中移除'), self._remove_canvas_selection, 'remove-from-group')
         layout.addWidget(tb)
 
         # ── Group tree ─────────────────────────────────────────────────
