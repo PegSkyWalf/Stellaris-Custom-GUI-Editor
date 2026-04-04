@@ -229,7 +229,7 @@ class WelcomeDialog(QDialog):
         self._theme_group = QButtonGroup(self)
         current_theme = self._settings.theme or DEFAULT_THEME
 
-        for key, (display_name, _) in AVAILABLE_THEMES.items():
+        for key, (display_name, _theme_css) in AVAILABLE_THEMES.items():
             col = QVBoxLayout()
             col.setSpacing(4)
 

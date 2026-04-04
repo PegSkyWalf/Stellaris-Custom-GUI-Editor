@@ -1320,7 +1320,7 @@ class GUIScene(QGraphicsScene):
 
         # on_ring 模式：先移动原件到环上起始位置
         if mode == 'on_ring' and original_moves:
-            for i, ((nx, ny), _) in enumerate(original_moves):
+            for i, ((nx, ny), _orig_size) in enumerate(original_moves):
                 src_item = sel[i][0]
                 src_node = src_item.node
                 old_pos = src_node.position
