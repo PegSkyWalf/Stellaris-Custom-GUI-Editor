@@ -16,6 +16,30 @@
 
 ---
 
+## [1.5.0] - 2026-04-15
+
+### 修复
+
+- **`flagSpriteType` 精灵图从未被索引**：`empire_flag_128`、`empire_flag_large` 等所有旗帜精灵定义（定义于 `customization.gfx` 中的 `flagSpriteType = { ... }` 块）从未被资源管理器注册，导致画布显示"精灵图缺失"橙色虚线框。现已将 `flagSpriteType` 加入已知精灵类型列表；编辑器将加载对应的旗帜框架纹理（`empire_flag_128_frame.dds` 等）作为静态预览——旗帜内部颜色与徽标由游戏引擎着色器在运行时合成，无法在编辑器中静态还原。
+- **`scale = .9` 被解析为 `9`**：PDX Script 中省略前导零的小数写法（`.9`、`-.5`、`.25` 等）在词法分析时，`.` 被当作无效字符丢弃，后续的 `9` 被解析为整数 9，导致精灵图缩放比例严重错误。已修正 NUMBER 正则为 `-?(?:\d+(?:\.\d+)?|\.\d+)...`，支持省略前导零的完整浮点数语法。
+- **`background` 块自身的 `position` 属性被忽略**：容器的 `background = { position = { x=0 y=20 } ... }` 中的位置偏移在画布渲染时被丢弃，背景图始终从容器左上角起点绘制；而容器内的子控件使用了正确的相对位置，两者产生视觉错位（如 kuat_bossbar 血条背景槽与血条格错开 20 px）。现在 `paint()` 在绘制背景精灵时正确应用 `bg_off_x / bg_off_y`。
+- **删除控件后保存丢失文件级 `@变量` 和注释**：`write_document_preserving()` 在检测到有控件被删除时，会 fallback 到 `write_document(doc)`，该函数只输出 `guiTypes = { ... }` 块，完全丢弃块外的所有内容（`@portrait_x = 0` 等变量定义、文件头注释等）。现已改为 patch 删除策略：在 `GUIDocument` 加载时记录所有根节点的原始 span（`_original_root_spans`），保存时将已删除节点的 span 作为空替换加入 patch 列表，不再 fallback，文件级内容完整保留。
+- **新增子控件时缩进风格不匹配**：对于使用 2 空格或 4 空格缩进的 mod 文件，向已有控件中插入新建子控件时，生成的代码始终使用 Tab 缩进，与周围代码不一致。现已新增 `_detect_indent_unit()` 自动检测文件缩进风格，`_retab()` 将 Tab 缩进的生成结果转换为目标格式；涵盖"有 span 的现有子控件中间插入"和"无子控件的叶容器追加"两种路径。
+- **图层面板拖拽重排后代码视图跳转到错误位置**：拖拽重排后 `_sync_model_from_tree()` 重建了 `doc.roots` 的顺序，但各节点的 `_source_modified` 仍为 `False`，导致 `write_document_preserving` 保留原始文本顺序不变，代码视图的高亮位置与新的节点顺序不一致。现在拖拽重排后对所有节点递归标记 `_source_modified = True`。
+- **图层面板拖拽导致控件在树中出现两次**：`QTreeWidget` 的 `InternalMove + ExtendedSelection` 模式下，若同时选中父容器与其子控件一起拖拽，Qt 会先移动父容器（含子控件），再将子控件单独移动一次，产生重复树节点。已在 `_LayerTree.startDrag()` 中过滤：拖拽前移除选区中父节点已被选中的子节点。同时阻止受保护的原版控件被拖拽。
+- **`effectButtonType` 新建时缺少必须的 `effect` 属性**：游戏加载时 `effectButtonType` 必须有 `effect` 字段，否则报错。`create_widget()` 现在对该类型自动填入 `effect = <widget_name>`。
+- **`effectButtonType` 设置 `buttonText` 时未自动生成 `buttonFont`**：游戏要求有按钮文字时必须同时指定字体，否则可能显示异常。属性面板设置 `buttonText` 时，若 `buttonFont` 尚未存在，自动填入默认值 `Arial12`。
+- **原版必须控件 `_protected` 标记从未生效**：`WidgetNode.__post_init__` 在 `properties` 赋值之前执行，`self.name` 始终为空字符串，导致保护标记永远无法被设置。已将保护逻辑移至 `_build_node()` 中 `properties` 赋值之后，并限定仅对从文件加载的节点（有 `span_info`）才设置，避免用户新建同名控件被误锁定。
+- **`background` 固定尺寸精灵被拉伸至容器大小**：`spriteType`（固定尺寸）注册的精灵用作容器 `background` 时，`paint()` 调用 `drawPixmap(rect.toRect(), pm)` 将其拉伸填满整个容器。现已改为按精灵自然尺寸（1:1 像素）从容器左上角绘制。
+
+### 内部
+
+- `src/core/gui_model.py`：`GUIDocument` 新增 `_original_root_spans: List[Tuple[int, int]]` 字段，在 `_process_pairs_into_doc_with_spans()` 末尾填充，记录初始加载时所有根节点的 span 位置，供保存时 patch 删除使用
+- `src/codegen/gui_writer.py`：新增 `_detect_indent_unit(raw)` 和 `_retab(text, unit)` 辅助函数；删除已废弃的 `_has_deleted_widgets()` 调用；`write_document_preserving()` 改为基于 `_original_root_spans` 的 patch 删除策略
+- `src/core/resource_manager.py`：`_SPRITE_BLOCK_KEYS_CANONICAL` 新增 `flagSpriteType`
+
+---
+
 ## [1.4.0] - 2026-04-05
 
 ### 新功能
@@ -244,7 +268,8 @@
 
 ---
 
-[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.2.0...v1.4.0
 [1.2.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.0.0...v1.1.0

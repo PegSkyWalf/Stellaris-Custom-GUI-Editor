@@ -62,7 +62,8 @@ TOKEN_PATTERNS = [
     ('EXPR',     r'@\[[^\]]*\]'),        # @[ math expression ] — must come before IDENT
     ('STRING',   r'"(?:[^"\\]|\\.)*"'),
     # Trailing % is one token so size = { width = 100% } preserves percentage (Stellaris GUI).
-    ('NUMBER',   r'-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?%?'),
+    # 匹配带可选前导整数部分的小数，支持 .9 和 0.9 两种形式（群星 GUI 省略前导 0 的写法）。
+    ('NUMBER',   r'-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?%?'),
     ('IDENT',    r'[A-Za-z_@][A-Za-z0-9_.\-/\\:]*'),
     ('EQUALS',   r'='),
     ('LBRACE',   r'\{'),

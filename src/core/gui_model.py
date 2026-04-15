@@ -361,12 +361,29 @@ class WidgetNode:
     Children are actual widget nodes (containerWindowType, iconType, etc.).
     """
     # Names of mandatory vanilla controls that must not be deleted
+    # 原版硬编码控件名单——这些控件被游戏引擎硬编码引用，删除或重命名必然导致游戏崩溃。
+    # 仅对从文件加载的节点（有 _source_span）启用保护，用户新建的同名控件不受影响。
+    # 参考来源：SZFs_tutorial_gui.gui 及 Stellaris 原版 GUI 文件分析。
     VANILLA_PROTECTED_NAMES: ClassVar[frozenset] = frozenset({
-        'focus_button', 'heading', 'alien_message_background', 'confirm_button',
-        'portrait_background', 'portrait', 'empire_info_bg', 'empire_name',
+        # ── 外交/事件窗口 ──
+        'alien_message', 'alien_message_background', 'EVENT_DIPLO',
+        # ── 事件选项 ──
+        'option_button', 'option_list',
+        # ── 帝国信息 ──
+        'empire_flag', 'empire_name', 'empire_info_bg',
         'empire_government_type', 'empire_personality_type', 'empire_ethics_icons',
-        'empire_flag', 'leader_details', 'opinion_window', 'EVENT_DIPLO',
-        'alien_message',
+        # ── 领袖/人像 ──
+        'portrait', 'portrait_background', 'leader_details',
+        'leader_country_flag', 'small_flag',
+        # ── 意见/关系 ──
+        'opinion_window',
+        # ── 通用按钮/标题 ──
+        'confirm_button', 'cancel_button', 'close_button',
+        'heading', 'focus_button',
+        # ── 滚动条（硬编码引用） ──
+        'standardlistbox_slider',
+        # ── 国家旗帜 ──
+        'country_flag',
     })
 
     widget_type: str
@@ -387,9 +404,9 @@ class WidgetNode:
     _source_modified: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self):
-        # Auto-protect known vanilla mandatory controls
-        if self.name in self.VANILLA_PROTECTED_NAMES:
-            self._protected = True
+        # 注意：不在此处自动设置 _protected，因为 __post_init__ 运行时 properties 尚未赋值，
+        # self.name 始终为空字符串。保护标记由 _build_node()（仅对从文件加载的节点）设置。
+        pass
 
     # ---- name ----
     @property
@@ -688,6 +705,8 @@ class GUIDocument:
     _guitypes_span: Optional[SourceSpan] = field(default=None, repr=False, compare=False)
     # guiTypes 块内部（{ 之后到 } 之前）的字符偏移范围
     _guitypes_inner_span: Optional[SourceSpan] = field(default=None, repr=False, compare=False)
+    # 初始加载时所有顶层 widget 的原始 span，用于检测删除（保存时不 fallback）
+    _original_root_spans: List[Tuple[int, int]] = field(default_factory=list, repr=False, compare=False)
 
     def all_widgets(self) -> List[WidgetNode]:
         result = []
@@ -780,6 +799,11 @@ def _build_node(widget_type: str, pairs: list,
     # 附加源码 span 信息
     if span_info:
         node._source_span = span_info.full_span
+        # 仅对从文件加载的节点（有 span_info）检查名称是否为原版必须控件。
+        # 新建节点（create_widget 创建，无 span_info）绝不自动保护，
+        # 避免用户新建同名控件时被错误锁定。
+        if node.name in WidgetNode.VANILLA_PROTECTED_NAMES:
+            node._protected = True
 
     return node
 
@@ -883,6 +907,13 @@ def _process_pairs_into_doc_with_spans(pairs: list,
                     break
             node = _build_node(key, val, span)
             doc.roots.append(node)
+
+    # 记录初始加载时所有根节点的 span，用于保存时检测删除（不再 fallback）
+    doc._original_root_spans = [
+        (r._source_span.start, r._source_span.end)
+        for r in doc.roots
+        if r._source_span
+    ]
 
 
 # Parent dimensions used only in WidgetNode.size when % / negative appear before layout runs
@@ -1035,4 +1066,7 @@ def create_widget(widget_type: str, name: str = '', **kwargs) -> WidgetNode:
     # without children they would have zero display dimensions and be invisible/unselectable.
     node.properties['size'] = {'width': w, 'height': h}
     node.properties.update(kwargs)
+    # effectButtonType 必须有 effect 属性，否则游戏加载报错
+    if widget_type == 'effectButtonType':
+        node.properties.setdefault('effect', node.properties.get('name', f'new_{widget_type}'))
     return node

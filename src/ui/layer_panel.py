@@ -92,6 +92,27 @@ class _LayerTree(QTreeWidget):
     """QTreeWidget subclass that emits structure_changed after drag-drop."""
     structure_changed = Signal()
 
+    def startDrag(self, supportedActions):
+        """拖拽前过滤：若父节点也在选中集合中，则取消子节点的选中状态，
+        防止 Qt InternalMove 同时移动父节点（含子节点）和子节点本身，
+        导致子节点在树中出现两次（复制 bug）。
+        同时阻止受保护的原版控件被拖拽。"""
+        selected = set(self.selectedItems())
+        for item in list(selected):
+            # 阻止受保护控件被拖拽移动
+            if isinstance(item, LayerItem) and getattr(item.node, '_protected', False):
+                item.setSelected(False)
+                selected.discard(item)
+                continue
+            # 若祖先节点也在选中集合中，取消该子节点的选中状态
+            parent = item.parent()
+            while parent:
+                if parent in selected:
+                    item.setSelected(False)
+                    break
+                parent = parent.parent()
+        super().startDrag(supportedActions)
+
     def dropEvent(self, event: QDropEvent):
         super().dropEvent(event)
         self.structure_changed.emit()
@@ -294,6 +315,14 @@ class LayerPanel(QWidget):
         # Stellaris tree shows reversed order (top of list = visually on top = rendered last)
         # The populate() call reverses roots when inserting. Reverse back.
         self._doc.roots = list(reversed(new_roots))
+
+        # 拖拽重排后标记所有节点为已修改，确保代码视图重新生成而非保留旧源码
+        def _mark_modified(node: WidgetNode):
+            node._source_modified = True
+            for child in node.children:
+                _mark_modified(child)
+        for root in self._doc.roots:
+            _mark_modified(root)
 
     def _on_context_menu(self, pos):
         item = self._tree.itemAt(pos)

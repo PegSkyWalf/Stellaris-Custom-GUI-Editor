@@ -315,6 +315,9 @@ class ResourceManager:
     _SPRITE_BLOCK_KEYS_CANONICAL = (
         'spriteType', 'corneredTileSpriteType', 'textSpriteType',
         'progressbartype', 'frameAnimatedSpriteType',
+        # flagSpriteType: 帝国旗帜精灵，游戏通过着色器在运行时合成旗帜图像，
+        # 编辑器只能加载静态的 textureFile（旗帜边框纹理）进行近似显示。
+        'flagSpriteType',
     )
 
     def _normalize_sprite_block_key(self, key: str) -> Optional[str]:

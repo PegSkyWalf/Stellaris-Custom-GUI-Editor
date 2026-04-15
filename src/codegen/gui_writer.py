@@ -31,6 +31,39 @@ def _indent(level: int) -> str:
     return '\t' * level
 
 
+def _detect_indent_unit(raw: str) -> str:
+    """从源码中检测缩进单位（Tab 或 N 个空格）。默认返回 Tab。"""
+    for line in raw.splitlines():
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        leading = line[: len(line) - len(stripped)]
+        if '\t' in leading:
+            return '\t'
+        if leading.startswith('    '):
+            return '    '
+        if leading.startswith('  '):
+            return '  '
+    return '\t'
+
+
+def _indent_with(level: int, unit: str) -> str:
+    return unit * level
+
+
+def _retab(text: str, indent_unit: str) -> str:
+    """将 write_widget 生成的 Tab 缩进替换为目标文件的缩进单位。"""
+    if indent_unit == '\t':
+        return text
+    lines = text.split('\n')
+    result = []
+    for line in lines:
+        stripped = line.lstrip('\t')
+        tab_count = len(line) - len(stripped)
+        result.append(indent_unit * tab_count + stripped)
+    return '\n'.join(result)
+
+
 def _format_value(val: Any, level: int = 0) -> str:
     """Format a Python value to PDX script representation."""
     if isinstance(val, bool):
@@ -295,12 +328,6 @@ def write_document_preserving(doc: GUIDocument) -> str:
     # 按 span 位置排序
     existing_roots.sort(key=lambda x: x[0])
 
-    # 收集原始源码中的所有 widget span（可能包含已被删除的）
-    # 使用已知的 span 信息
-    original_spans = set()
-    for s, e, r in existing_roots:
-        original_spans.add((s, e))
-
     # 构建 patch 列表
     patches = []  # (start, end, replacement)
 
@@ -328,19 +355,14 @@ def write_document_preserving(doc: GUIDocument) -> str:
         # 在 guiTypes 内部末尾插入（闭合 } 之前）
         patches.append((inner_end, inner_end, insert_text))
 
-    # 检查是否有被删除的 widget（在原始源码中有 span，但不在 doc.roots 中）
-    # 通过比较 existing_roots 的 span 和 doc.roots 关联的 span 来判断
+    # 检查是否有被删除的 widget，并将删除操作转换为 patch（而非 fallback 到 write_document）
+    # 使用加载时记录的原始根节点 span 列表，找出当前不在 doc.roots 中的 span → 已删除
     current_spans = set((s, e) for s, e, r in existing_roots)
-    # 扫描 raw_source 中 guiTypes 块内的所有 widget 块来找到被删除的
-    # 但由于我们已经只跟踪了 doc.roots 中的 span，被删除的 widget 的 span
-    # 信息已经不在 doc.roots 中了。我们需要从 _raw_source 识别它们。
-    # 简单做法：被删除的 widget 不在 existing_roots 里，它们的 span 也不会被 patch。
-    # 它们的原文会被保留在输出中 —— 这实际上不正确，但删除 widget 后
-    # 整个文件会被标记为 modified，此时应该使用 find-and-remove 策略。
-    # 更好的方案：在解析时记录所有 widget span，即使删除后也能追踪。
-    # 目前采用保守策略：如果有任何 widget 被删除，回退到完全重写模式。
-    if _has_deleted_widgets(doc, raw, inner_start, inner_end, existing_roots):
-        return write_document(doc)
+    for orig_start, orig_end in doc._original_root_spans:
+        if (orig_start, orig_end) not in current_spans:
+            # 这个 widget 已被删除，连同其前后空白行一起移除
+            delete_start = _expand_blank_lines(raw, orig_start, orig_end)
+            patches.append((delete_start, orig_end, ''))
 
     if not patches:
         # 没有任何修改，返回原始源码
@@ -354,6 +376,25 @@ def write_document_preserving(doc: GUIDocument) -> str:
         result = result[:start] + replacement + result[end:]
 
     return result
+
+
+def _expand_blank_lines(raw: str, span_start: int, span_end: int) -> int:
+    """删除一个 widget 时，同时删除其前面的空白行，避免输出有多余空行。
+    返回调整后的删除起点（向前扩展到前一行末）。"""
+    # 找到 widget span 所在行的行首（含缩进）
+    line_start = raw.rfind('\n', 0, span_start)
+    if line_start < 0:
+        return span_start
+    # 从 line_start 向前，跳过空白行
+    pos = line_start  # points at the '\n' before span_start's line
+    while pos > 0:
+        prev_nl = raw.rfind('\n', 0, pos)
+        line_content = raw[prev_nl + 1:pos]
+        if line_content.strip() == '':
+            pos = prev_nl  # extend deletion to include this blank line
+        else:
+            break
+    return pos if pos >= 0 else span_start
 
 
 def _write_widget_header(node: WidgetNode, level: int) -> List[str]:
@@ -419,8 +460,8 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
         )
 
         if not children_with_spans:
-            # 没有子节点有 span（叶节点或全新子节点）→ 完全重新生成
-            return '\n'.join(write_widget(node, level=level))
+            # 没有子节点有 span（叶节点或全新子节点）→ 完全重新生成，但匹配文件缩进风格
+            return _retab('\n'.join(write_widget(node, level=level)), _detect_indent_unit(raw))
 
         # 找到第一个子节点所在行的起始位置
         first_child_abs_start = children_with_spans[0][1]
@@ -454,7 +495,11 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
         # 插入没有 span 的新子节点（在闭合括号之前）
         new_children = [c for c in node.children if not c._source_span]
         if new_children:
-            insert_parts = ['\n'.join(write_widget(c, level=level + 1)) for c in new_children]
+            indent_unit = _detect_indent_unit(raw)
+            insert_parts = [
+                _retab('\n'.join(write_widget(c, level=level + 1)), indent_unit)
+                for c in new_children
+            ]
             insert_text = '\n\n' + '\n\n'.join(insert_parts) + '\n'
             last_brace = result.rfind('}')
             if last_brace >= 0:
@@ -525,10 +570,11 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
 
     # 插入新子节点（在最后一个 } 之前）
     if new_children:
+        indent_unit = _detect_indent_unit(raw)
         insert_parts = []
         child_level = level + 1
         for child in new_children:
-            insert_parts.append('\n'.join(write_widget(child, level=child_level)))
+            insert_parts.append(_retab('\n'.join(write_widget(child, level=child_level)), indent_unit))
         insert_text = '\n\n' + '\n\n'.join(insert_parts) + '\n'
         # 在 widget 源码的最后一个 } 所在行的行首之前插入。
         # 注意：不能只在 } 字符前插入，那样会把行首缩进留在插入内容之前，

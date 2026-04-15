@@ -623,6 +623,12 @@ class PropertiesPanel(QWidget):
             self._title.setStyleSheet(f'color: {color}; font-weight: bold;')
             self._type_label.setText(node.widget_type)
             self._name_edit.setText(node.name)
+            # 受保护的原版控件禁止重命名
+            is_protected = getattr(node, '_protected', False)
+            self._name_edit.setReadOnly(is_protected)
+            self._name_edit.setToolTip(
+                _('原版必须控件，不可重命名') if is_protected else ''
+            )
 
             x, y = node.position
             self._pos_editor.set_value(x, y)
@@ -828,6 +834,8 @@ class PropertiesPanel(QWidget):
 
     def _on_name_changed(self, value: str):
         """Handle name field change; warn if duplicate."""
+        if self._node and getattr(self._node, '_protected', False):
+            return  # 原版必须控件禁止重命名
         # 捕获改名前的旧名，用于同步编组
         old_name = self._node.name if (self._node and not self._updating) else ''
         self._set_prop('name', value)
@@ -858,6 +866,16 @@ class PropertiesPanel(QWidget):
         else:
             self._node.properties[key] = value
         self._node.mark_source_modified()
+        # effectButtonType: 设置 buttonText 时若缺少 buttonFont 则自动填入默认字体
+        if key == 'buttonText' and value and self._node.widget_type == 'effectButtonType':
+            if not self._node.properties.get('buttonFont'):
+                self._node.properties['buttonFont'] = 'Arial12'
+                # 同步刷新 UI 中的 buttonFont 字段
+                self._updating = True
+                try:
+                    self._button_font_edit.setText('Arial12')
+                finally:
+                    self._updating = False
         # Update localization preview
         if key == 'buttonText':
             rm = ResourceManager.instance()

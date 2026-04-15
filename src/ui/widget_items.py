@@ -650,6 +650,7 @@ class GUIWidgetItem(QGraphicsRectItem):
         self._bg_render_mode = 'none'
         self._bg_bx_override = None
         self._bg_by_override = None
+        self._has_missing_sprite = False  # 精灵已指定但无法加载（动态精灵或未索引）
 
         # Support direct textureFile path (common in textBoxType).
         # instantTextBoxType + font property: game ignores textureFile in this combination.
@@ -704,6 +705,9 @@ class GUIWidgetItem(QGraphicsRectItem):
                 self._sprite_pixmap = rm.get_raw_pixmap(
                     sprite_name, frame=sprite_frame,
                 )
+            # 精灵已指定但无法加载时标记（动态精灵/未索引/纹理缺失）
+            if self._sprite_pixmap is None:
+                self._has_missing_sprite = True
 
         bg = node.get_background()
         if bg:
@@ -813,18 +817,33 @@ class GUIWidgetItem(QGraphicsRectItem):
 
         # ── Background sprite ────────────────────────────────────────────────
         if self._bg_pixmap and not self._bg_pixmap.isNull():
+            # 应用 background 块自身的 position 偏移（容器内背景可独立定位）
+            bg_off_x, bg_off_y = 0.0, 0.0
+            _bg_block = self.node.get_background()
+            if _bg_block:
+                _bg_pos = _bg_block.get('position', {})
+                if isinstance(_bg_pos, dict):
+                    try:
+                        bg_off_x = float(_bg_pos.get('x', 0) or 0)
+                        bg_off_y = float(_bg_pos.get('y', 0) or 0)
+                    except (TypeError, ValueError):
+                        pass
+            bg_rect = QRectF(rect.x() + bg_off_x, rect.y() + bg_off_y,
+                             rect.width(), rect.height())
             if self._bg_render_mode == 'nine_patch':
                 # Use override border sizes (from textureFile tile detection) if available
                 if self._bg_bx_override is not None:
                     bx, by = self._bg_bx_override, self._bg_by_override
                 else:
-                    bg = self.node.get_background()
-                    bg_sprite = bg.get('quadTextureSprite', bg.get('spriteType', '')) if bg else ''
+                    bg_sprite = _bg_block.get('quadTextureSprite', _bg_block.get('spriteType', '')) if _bg_block else ''
                     info = ResourceManager.instance().get_sprite(bg_sprite)
                     bx, by = info.border_size if info else (6, 6)
-                draw_nine_patch(painter, self._bg_pixmap, bx, by, rect)
+                draw_nine_patch(painter, self._bg_pixmap, bx, by, bg_rect)
             else:
-                painter.drawPixmap(rect.toRect(), self._bg_pixmap)
+                # fixed 模式：按精灵自然尺寸绘制，不拉伸至容器边界
+                pm = self._bg_pixmap
+                target = QRectF(bg_rect.x(), bg_rect.y(), pm.width(), pm.height())
+                painter.drawPixmap(target.toRect(), pm)
 
         # ── Main sprite (with optional rotation) ────────────────────────────
         rotation_rad = 0.0
@@ -858,6 +877,30 @@ class GUIWidgetItem(QGraphicsRectItem):
 
             if rotation_rad != 0.0:
                 painter.restore()
+        elif getattr(self, '_has_missing_sprite', False) and not self._preview_mode:
+            # 精灵已指定但无法加载（动态精灵或资源未索引）：绘制醒目的占位显示
+            painter.save()
+            # 半透明灰色底色
+            painter.fillRect(rect, QColor(80, 80, 80, 60))
+            # 橙色虚线边框表示"有精灵但未加载"
+            pen_miss = QPen(QColor('#e67e22'), 1, Qt.PenStyle.DashLine)
+            pen_miss.setDashPattern([4, 3])
+            painter.setPen(pen_miss)
+            painter.drawRect(rect.adjusted(1, 1, -1, -1))
+            # 在控件中央绘制精灵名（截断以适应宽度）
+            sprite_name = self.node.get_sprite_name() or ''
+            if sprite_name and rect.width() > 20 and rect.height() > 12:
+                font_miss = QFont('Arial', 7)
+                painter.setFont(font_miss)
+                painter.setPen(QColor('#e67e22'))
+                fm = QFontMetrics(font_miss)
+                label = fm.elidedText(sprite_name, Qt.TextElideMode.ElideMiddle, int(rect.width()) - 4)
+                painter.drawText(
+                    rect.adjusted(2, 2, -2, -2),
+                    Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+                    label,
+                )
+            painter.restore()
         elif not self._bg_pixmap:
             # Placeholder fill
             fill = QColor(color)
