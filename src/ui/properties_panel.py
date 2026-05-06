@@ -257,7 +257,7 @@ class PropertiesPanel(QWidget):
         form.addRow('', sprite_note)
 
         self._quad_sel = SpriteSelector()
-        self._quad_sel.sprite_changed.connect(lambda v: self._set_prop('quadTextureSprite', v) if v else None)
+        self._quad_sel.sprite_changed.connect(self._on_quad_sprite_changed)
         form.addRow('quadTextureSprite:', self._quad_sel)
 
         quad_note = QLabel(_('可拉伸精灵 (大小由 size 属性决定)'))
@@ -718,6 +718,11 @@ class PropertiesPanel(QWidget):
             self._sprite_sel.set_value(str(props.get('spriteType', '')))
             self._quad_sel.set_value(str(props.get('quadTextureSprite', '')))
             self._scale_spin.setValue(float(props.get('scale', 1.0)))
+            icon_type_uses_sprite_only = node.widget_type == 'iconType'
+            self._quad_sel.setEnabled(not icon_type_uses_sprite_only)
+            self._quad_sel.setToolTip(
+                _('iconType 只支持 spriteType') if icon_type_uses_sprite_only else ''
+            )
 
             # Text
             bt = str(props.get('buttonText', ''))
@@ -922,6 +927,25 @@ class PropertiesPanel(QWidget):
             self._node.properties.pop('quadTextureSprite', None)
         else:
             self._node.properties.pop('spriteType', None)
+        self._node.mark_source_modified()
+        self.property_changed.emit(self._node)
+
+    def _on_quad_sprite_changed(self, v: str):
+        if self._updating or self._node is None:
+            return
+        if self._node.widget_type == 'iconType':
+            if v:
+                self._node.properties['spriteType'] = v
+            self._node.properties.pop('quadTextureSprite', None)
+            self._node.mark_source_modified()
+            self.property_changed.emit(self._node)
+            return
+        if v:
+            self._node.properties['quadTextureSprite'] = v
+            self._node.properties.pop('spriteType', None)
+        else:
+            self._node.properties.pop('quadTextureSprite', None)
+        self._node.mark_source_modified()
         self.property_changed.emit(self._node)
 
     def _on_bg_sprite_changed(self, v: str):

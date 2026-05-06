@@ -12,14 +12,15 @@ from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QRect
 from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QKeyEvent, QWheelEvent,
     QMouseEvent, QKeySequence, QPalette,
+    QDragEnterEvent, QDropEvent,
 )
 
 from ..core.gui_model import (
     WidgetNode, GUIDocument, create_widget,
-    WIDGET_TYPES, WIDGET_LABELS,
+    WIDGET_TYPES, WIDGET_LABELS, DEFAULT_SIZE,
     compute_widget_topleft, reverse_compute_position,
     orientation_to_anchor, origo_to_offset,
-    resolve_editor_layout_sizes, effective_origo,
+    resolve_editor_layout_sizes, effective_origo, CONTAINER_TYPES,
     make_names_unique,
 )
 from ..core.resource_manager import ResourceManager
@@ -731,6 +732,16 @@ class GUIScene(QGraphicsScene):
             pass
         return (0, 9999)
 
+    @staticmethod
+    def display_index_for_sibling_count(model_index: int, count: int) -> int:
+        """Layer tree index for a sibling: visual top is the last rendered model item."""
+        return max(0, count - 1 - model_index)
+
+    @staticmethod
+    def model_index_from_display_index(display_index: int, count: int) -> int:
+        """Model index for a sibling dropped at a layer-tree row."""
+        return max(0, count - 1 - display_index)
+
     def get_selected_nodes(self) -> List[WidgetNode]:
         return [item.node for item in self.selectedItems()
                 if isinstance(item, GUIWidgetItem)]
@@ -744,6 +755,34 @@ class GUIScene(QGraphicsScene):
             if isinstance(item, GUIWidgetItem):
                 return item
         return None
+
+    def find_drop_parent(self, scene_pos: QPointF) -> Optional[WidgetNode]:
+        """Return the best container node under scene_pos for widget drops."""
+        from ..core.gui_model import CONTAINER_TYPES
+        candidates = []
+        for item in self.items(scene_pos):
+            if not isinstance(item, GUIWidgetItem):
+                continue
+            node = item.node
+            if node.widget_type in CONTAINER_TYPES:
+                candidates.append(item)
+            elif node.parent and node.parent.widget_type in CONTAINER_TYPES:
+                parent_item = self.get_item_for_node(node.parent)
+                if parent_item:
+                    candidates.append(parent_item)
+        if not candidates:
+            return None
+        candidates.sort(key=lambda it: self._item_depth(it), reverse=True)
+        return candidates[0].node
+
+    @staticmethod
+    def _item_depth(item: GUIWidgetItem) -> int:
+        depth = 0
+        parent = item.parentItem()
+        while parent:
+            depth += 1
+            parent = parent.parentItem()
+        return depth
 
     def select_node(self, node: Optional[WidgetNode]):
         self.clearSelection()
@@ -787,8 +826,10 @@ class GUIScene(QGraphicsScene):
 
     def add_widget(self, widget_type: str, pos: QPointF,
                    parent_node: Optional[WidgetNode] = None, name: str = '') -> WidgetNode:
+        if self.doc is None:
+            raise RuntimeError('Cannot add widget without a document')
+
         node = create_widget(widget_type, name)
-        settings = AppSettings.instance()
         pw, ph = self._layout_dims_for_parent(parent_node)
 
         rm = ResourceManager.instance()
@@ -811,22 +852,18 @@ class GUIScene(QGraphicsScene):
             stellaris_y = round(stellaris_y / self.grid_size) * self.grid_size
         node.position = (stellaris_x, stellaris_y)
 
-        # Add to model
-        if parent_node:
-            parent_node.add_child(node)
-            parent_item = self.get_item_for_node(parent_node)
-        else:
-            if self.doc:
-                self.doc.roots.append(node)
-            parent_item = None
+        parent_item = self.get_item_for_node(parent_node) if parent_node else None
 
-        # Add to undo stack
         if self.undo_stack and self.doc:
             from ..core.undo import AddWidgetCommand
-            cmd = AddWidgetCommand(self.doc, node,
-                                   parent_node,
-                                   len(parent_node.children) - 1 if parent_node else len(self.doc.roots) - 1)
-            self.undo_stack.push(cmd, execute=False)
+            insert_index = len(parent_node.children) if parent_node else len(self.doc.roots)
+            cmd = AddWidgetCommand(self.doc, node, parent_node, insert_index)
+            self.undo_stack.push(cmd, execute=True)
+        else:
+            if parent_node:
+                parent_node.add_child(node)
+            else:
+                self.doc.roots.append(node)
 
         # Build item in scene
         tl_x, tl_y = compute_widget_topleft(pw, ph, dw, dh, node.orientation, effective_origo(node),
@@ -895,34 +932,26 @@ class GUIScene(QGraphicsScene):
 
     def duplicate_selected(self) -> Optional[WidgetNode]:
         item = self.get_selected_item()
-        if not item:
+        if not item or not self.doc:
             return None
         node = item.node
-        new_node = node.clone()
-        # 自动为克隆节点生成唯一名称
-        if self.doc:
-            existing = {w.name for w in self.doc.all_widgets() if w.name}
-            make_names_unique(new_node, existing)
-        x, y = new_node.position
-        new_node.position = (x + 16, y + 16)
+        from ..core.undo import DuplicateWidgetCommand
+        cmd = DuplicateWidgetCommand(self.doc, node)
+        if self.undo_stack:
+            self.undo_stack.push(cmd, execute=True)
+        else:
+            cmd.execute()
+        new_node = cmd.clone
+        if new_node is None:
+            return None
 
         parent_item = None
         if node.parent:
-            node.parent.add_child(new_node)
             parent_item = self.get_item_for_node(node.parent)
             pw, ph = self._layout_dims_for_parent(node.parent)
-        elif self.doc:
-            self.doc.roots.append(new_node)
+        else:
             settings = AppSettings.instance()
             pw, ph = settings.canvas_size
-        else:
-            return None
-
-        if self.undo_stack and self.doc:
-            from ..core.undo import DuplicateWidgetCommand
-            cmd = DuplicateWidgetCommand(self.doc, node)
-            cmd.clone = new_node
-            self.undo_stack.push(cmd, execute=False)
 
         rm = ResourceManager.instance()
         dw, dh = self._get_display_size(new_node, rm)
@@ -1042,7 +1071,10 @@ class GUIScene(QGraphicsScene):
         if node not in lst:
             return
         idx = lst.index(node)
-        new_idx = max(0, min(len(lst) - 1, idx + delta))
+        if delta == 0:
+            self._rebuild_siblings(lst, container, node)
+            return
+        new_idx = max(0, min(len(lst) - 1, idx - delta))
         if new_idx == idx:
             return
         lst.remove(node)
@@ -1055,13 +1087,10 @@ class GUIScene(QGraphicsScene):
         if self.doc:
             self.doc.modified = True
         self.document_modified.emit()
-        # Z-order in Qt is determined by insertion order; simplest is to rebuild
-        # Just emit modified so the main window can reload if needed
-        # For now, adjust z-values
-        item = self.get_item_for_node(node)
-        if item:
-            idx = siblings.index(node)
-            item.setZValue(float(idx))
+        for idx, sibling in enumerate(siblings):
+            item = self.get_item_for_node(sibling)
+            if item:
+                item.setZValue(float(idx))
 
     def set_preview_mode(self, enabled: bool):
         self._preview_mode = enabled
@@ -1267,21 +1296,20 @@ class GUIScene(QGraphicsScene):
                 new_node = src_node.clone()
                 make_names_unique(new_node, existing_names)
                 new_node.position = (nx, ny)
-                # 加入父节点或根列表
-                if src_node.parent:
-                    src_node.parent.add_child(new_node)
-                elif self.doc:
-                    self.doc.roots.append(new_node)
                 if self.undo_stack and self.doc:
                     cmd = AddWidgetCommand(self.doc, new_node,
                                            parent=src_node.parent)
                     cmds.append(cmd)
+                elif src_node.parent:
+                    src_node.parent.add_child(new_node)
+                elif self.doc:
+                    self.doc.roots.append(new_node)
                 new_items.append((new_node, src_item.parentItem()))
 
         if cmds and self.undo_stack:
             compound = CompoundCommand(cmds,
                                        f'线性阵列 ({count} 副本)')
-            self.undo_stack.push(compound, execute=False)
+            self.undo_stack.push(compound, execute=True)
 
         # 创建场景 item
         for new_node, parent_item in new_items:
@@ -1317,6 +1345,7 @@ class GUIScene(QGraphicsScene):
 
         cmds = []
         new_items = []
+        moved_items = []
         existing_names = {w.name for w in self.doc.all_widgets() if w.name} if self.doc else set()
 
         # on_ring 模式：先移动原件到环上起始位置
@@ -1326,13 +1355,13 @@ class GUIScene(QGraphicsScene):
                 src_node = src_item.node
                 old_pos = src_node.position
                 if old_pos != (nx, ny):
-                    src_node.position = (nx, ny)
-                    src_node.mark_source_modified()
                     if self.undo_stack and self.doc:
-                        cmd = MoveWidgetCommand(self.doc, src_node,
-                                                old_pos, (nx, ny))
+                        cmd = MoveWidgetCommand(src_node, old_pos, (nx, ny))
                         cmds.append(cmd)
-                    self._refresh_item_position(src_item)
+                    else:
+                        src_node.position = (nx, ny)
+                        src_node.mark_source_modified()
+                    moved_items.append(src_item)
 
         # 创建新副本
         for step_copies in copies_per_step:
@@ -1342,23 +1371,25 @@ class GUIScene(QGraphicsScene):
                 new_node = src_node.clone()
                 make_names_unique(new_node, existing_names)
                 new_node.position = (nx, ny)
-                if src_node.parent:
-                    src_node.parent.add_child(new_node)
-                elif self.doc:
-                    self.doc.roots.append(new_node)
                 if self.undo_stack and self.doc:
                     cmd = AddWidgetCommand(self.doc, new_node,
                                            parent=src_node.parent)
                     cmds.append(cmd)
+                elif src_node.parent:
+                    src_node.parent.add_child(new_node)
+                elif self.doc:
+                    self.doc.roots.append(new_node)
                 new_items.append((new_node, src_item.parentItem()))
 
         if cmds and self.undo_stack:
             compound = CompoundCommand(cmds,
                                        f'圆形阵列 ({count} 份)')
-            self.undo_stack.push(compound, execute=False)
+            self.undo_stack.push(compound, execute=True)
 
         for new_node, parent_item in new_items:
             self._create_item_for_node(new_node, parent_item)
+        for moved_item in moved_items:
+            self._refresh_item_position(moved_item)
 
         if self.doc:
             self.doc.modified = True
@@ -1388,21 +1419,21 @@ class GUIScene(QGraphicsScene):
                 new_node = src_node.clone()
                 make_names_unique(new_node, existing_names)
                 new_node.position = (nx, ny)
-                if src_node.parent:
-                    src_node.parent.add_child(new_node)
-                elif self.doc:
-                    self.doc.roots.append(new_node)
                 if self.undo_stack and self.doc:
                     cmd = AddWidgetCommand(self.doc, new_node,
                                            parent=src_node.parent)
                     cmds.append(cmd)
+                elif src_node.parent:
+                    src_node.parent.add_child(new_node)
+                elif self.doc:
+                    self.doc.roots.append(new_node)
                 new_items.append((new_node, src_item.parentItem()))
 
             if cmds and self.undo_stack:
                 axis_name = '水平' if axis == 'h' else '垂直'
                 compound = CompoundCommand(cmds,
                                            f'镜像复制 ({axis_name})')
-                self.undo_stack.push(compound, execute=False)
+                self.undo_stack.push(compound, execute=True)
 
             for new_node, parent_item in new_items:
                 self._create_item_for_node(new_node, parent_item)
@@ -1469,7 +1500,8 @@ class GUIScene(QGraphicsScene):
         rm = ResourceManager.instance()
         settings = AppSettings.instance()
         if parent_item and isinstance(parent_item, GUIWidgetItem):
-            pw, ph = parent_item._display_w, parent_item._display_h
+            cw, ch = settings.canvas_size
+            pw, ph = self._parent_layout_dimensions(parent_item.node, float(cw), float(ch))
         else:
             pw, ph = settings.canvas_size
             parent_item = None
@@ -1638,6 +1670,7 @@ class GUICanvas(QGraphicsView):
     node_property_changed = Signal(object)   # property edited → full canvas refresh needed
     node_position_changed = Signal(object)   # drag/resize → props panel update only (no canvas refresh)
     document_modified = Signal()
+    widget_dropped = Signal(object)
     cursor_pos_changed = Signal(float, float)   # scene x, y under cursor
 
     def __init__(self, parent=None):
@@ -1655,6 +1688,7 @@ class GUICanvas(QGraphicsView):
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setAcceptDrops(True)
 
         self._scene.selection_changed_signal.connect(self.node_selected.emit)
         self._scene.widget_property_changed_signal.connect(self.node_property_changed.emit)
@@ -1878,10 +1912,41 @@ class GUICanvas(QGraphicsView):
                 if ok and new_name:
                     self._scene.add_widget(wt, scene_pos, parent_node, name=new_name)
 
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasFormat('application/x-stellaris-widget-type'):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat('application/x-stellaris-widget-type'):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event: QDropEvent):
+        mime = event.mimeData()
+        if not mime.hasFormat('application/x-stellaris-widget-type'):
+            super().dropEvent(event)
+            return
+        if self._scene.doc is None:
+            self.load_document(GUIDocument(file_path=''))
+        widget_type = bytes(mime.data('application/x-stellaris-widget-type')).decode('utf-8')
+        scene_pos = self.mapToScene(event.position().toPoint())
+        parent_node = self._scene.find_drop_parent(scene_pos)
+        name = f'new_{widget_type[:10]}'
+        node = self._scene.add_widget(widget_type, scene_pos, parent_node, name=name)
+        self._scene.clearSelection()
+        item = self._scene.get_item_for_node(node)
+        if item:
+            item.setSelected(True)
+        self.widget_dropped.emit(node)
+        event.acceptProposedAction()
+
     def _change_widget_type(self, node: 'WidgetNode', new_type: str):
         """Change a widget's type, preserving compatible properties."""
-        from ..core.gui_model import CONTAINER_TYPES
-        from ..core.undo import CompoundCommand
+        if node is None or new_type == node.widget_type:
+            return
         old_type = node.widget_type
         # Warn if changing between container and non-container
         if (old_type in CONTAINER_TYPES) != (new_type in CONTAINER_TYPES):
@@ -1897,10 +1962,28 @@ class GUICanvas(QGraphicsView):
             # Remove direct sprite properties - containers don't have them
             for k in ('spriteType', 'quadTextureSprite', 'scale'):
                 node.properties.pop(k, None)
+        elif node.widget_type == 'iconType':
+            quad_sprite = node.properties.pop('quadTextureSprite', None)
+            if quad_sprite and not node.properties.get('spriteType'):
+                node.properties['spriteType'] = quad_sprite
+        elif old_type in CONTAINER_TYPES:
+            default_w, default_h = DEFAULT_SIZE.get(node.widget_type, (100, 30))
+            size_prop = node.properties.get('size')
+            if not isinstance(size_prop, dict):
+                node.properties['size'] = {'width': default_w, 'height': default_h}
+        node.mark_source_modified()
         if self._scene.doc:
             self._scene.doc.modified = True
+            cw, ch = AppSettings.instance().canvas_size
+            resolve_editor_layout_sizes(
+                self._scene.doc.roots, cw, ch, ResourceManager.instance())
         # Rebuild item in scene
-        self._scene.refresh_item(node)
+        self._scene.refresh_item(node, _force_children=True)
+        parent = node.parent
+        while parent is not None:
+            self._scene.refresh_item(parent, _force_children=False)
+            parent = parent.parent
+        self._scene.widget_property_changed_signal.emit(node)
         self._scene.document_modified.emit()
 
     def viewport_center_scene(self) -> QPointF:

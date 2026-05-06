@@ -130,6 +130,8 @@ class LayerPanel(QWidget):
         super().__init__(parent)
         self._doc: Optional[GUIDocument] = None
         self._node_to_item: Dict[int, LayerItem] = {}
+        self._last_structure_snapshot: Dict[int, tuple] = {}
+        self._last_structure_moves: list = []
         self._updating = False
         self._setup_ui()
 
@@ -148,14 +150,14 @@ class LayerPanel(QWidget):
         self._up_btn = QPushButton()
         self._up_btn.setIcon(IconProvider.themed_icon('arrow-up', size=16))
         self._up_btn.setFixedWidth(28)
-        self._up_btn.setToolTip(_('上移 (在父容器中向前)'))
+        self._up_btn.setToolTip(_('上移一层'))
         self._up_btn.clicked.connect(lambda: self._move_selection(-1))
         btn_row.addWidget(self._up_btn)
 
         self._down_btn = QPushButton()
         self._down_btn.setIcon(IconProvider.themed_icon('arrow-down', size=16))
         self._down_btn.setFixedWidth(28)
-        self._down_btn.setToolTip(_('下移 (在父容器中向后)'))
+        self._down_btn.setToolTip(_('下移一层'))
         self._down_btn.clicked.connect(lambda: self._move_selection(1))
         btn_row.addWidget(self._down_btn)
 
@@ -202,6 +204,8 @@ class LayerPanel(QWidget):
         if doc:
             for root in reversed(doc.roots):  # reversed so top-most shows first
                 self._add_item_tree(root, None)
+        self._last_structure_snapshot = self._snapshot_structure()
+        self._last_structure_moves = []
         self._updating = False
 
     def _add_item_tree(self, node: WidgetNode, parent_item: Optional[LayerItem]):
@@ -209,7 +213,7 @@ class LayerPanel(QWidget):
         if parent_item is None:
             self._tree.addTopLevelItem(item)
         self._node_to_item[id(node)] = item
-        for child in node.children:
+        for child in reversed(node.children):
             self._add_item_tree(child, item)
         item.setExpanded(True)
 
@@ -295,6 +299,7 @@ class LayerPanel(QWidget):
         """Rebuild WidgetNode parent/children from the current tree item order."""
         if not self._doc:
             return
+        before = dict(self._last_structure_snapshot)
 
         def _collect(tree_item: QTreeWidgetItem) -> WidgetNode:
             node: WidgetNode = tree_item.node  # type: ignore[attr-defined]
@@ -304,6 +309,7 @@ class LayerPanel(QWidget):
                 child_node = _collect(child_item)
                 child_node.parent = node
                 node.children.append(child_node)
+            node.children.reverse()
             return node
 
         new_roots = []
@@ -323,6 +329,37 @@ class LayerPanel(QWidget):
                 _mark_modified(child)
         for root in self._doc.roots:
             _mark_modified(root)
+
+        after = self._snapshot_structure()
+        moves = []
+        for node_id, new_info in after.items():
+            old_info = before.get(node_id)
+            if old_info and old_info != new_info:
+                node = self._node_to_item.get(node_id).node if node_id in self._node_to_item else None
+                if node is not None:
+                    moves.append((node, old_info, new_info))
+        self._last_structure_snapshot = after
+        self._last_structure_moves = moves
+
+    def _snapshot_structure(self) -> Dict[int, tuple]:
+        """Return node id -> (parent id or 0, index) for the current model tree."""
+        result: Dict[int, tuple] = {}
+        if not self._doc:
+            return result
+
+        def _walk(node: WidgetNode, parent_id: int, index: int):
+            result[id(node)] = (parent_id, index)
+            for child_idx, child in enumerate(node.children):
+                _walk(child, id(node), child_idx)
+
+        for root_idx, root in enumerate(self._doc.roots):
+            _walk(root, 0, root_idx)
+        return result
+
+    def take_last_structure_moves(self) -> list:
+        moves = list(self._last_structure_moves)
+        self._last_structure_moves = []
+        return moves
 
     def _on_context_menu(self, pos):
         item = self._tree.itemAt(pos)
@@ -385,7 +422,7 @@ class LayerPanel(QWidget):
         if node in lst:
             lst.remove(node)
             if front:
-                lst.insert(0, node)
-            else:
                 lst.append(node)
+            else:
+                lst.insert(0, node)
             self.order_changed.emit(node, 0)  # 0 = full rebuild

@@ -1321,6 +1321,13 @@ class GUIWidgetItem(QGraphicsRectItem):
         """Get the parent container's size for position calculation."""
         parent_item = self.parentItem()
         if parent_item and isinstance(parent_item, GUIWidgetItem):
+            scene = self.scene()
+            if scene and hasattr(scene, '_parent_layout_dimensions'):
+                from ..core.settings import AppSettings
+                cw, ch = AppSettings.instance().canvas_size
+                return scene._parent_layout_dimensions(  # type: ignore[attr-defined]
+                    parent_item.node, float(cw), float(ch),
+                )
             return parent_item._display_w, parent_item._display_h
         from ..core.settings import AppSettings
         return AppSettings.instance().canvas_size

@@ -10,7 +10,10 @@ from PySide6.QtWidgets import (
     QInputDialog, QApplication,
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPen, QPalette
+from PySide6.QtGui import (
+    QDrag, QFont, QColor, QIcon, QPixmap, QPainter, QPen, QPalette,
+)
+from PySide6.QtCore import QMimeData
 
 from ..core.gui_model import WIDGET_TYPES, WIDGET_LABELS, WIDGET_COLORS, DEFAULT_SIZE
 from ..core.theme_manager import ThemeManager
@@ -46,6 +49,23 @@ class WidgetTypeItem(QListWidgetItem):
         self.setData(Qt.ItemDataRole.UserRole, widget_type)
 
 
+class WidgetTypeList(QListWidget):
+    """List widget that starts a copy drag for widget types."""
+    MIME_TYPE = 'application/x-stellaris-widget-type'
+
+    def startDrag(self, _supported_actions):
+        item = self.currentItem()
+        if not isinstance(item, WidgetTypeItem):
+            return
+        mime = QMimeData()
+        mime.setData(self.MIME_TYPE, item.widget_type.encode('utf-8'))
+        mime.setText(item.widget_type)
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.setPixmap(item.icon().pixmap(22, 22))
+        drag.exec(Qt.DropAction.CopyAction)
+
+
 class WidgetLibrary(QWidget):
     """控件库面板 — 双击或点击按钮添加到画布。"""
     add_widget_requested = Signal(str, str)
@@ -69,9 +89,10 @@ class WidgetLibrary(QWidget):
         hint.setStyleSheet(f'color: {ThemeManager.muted_color()}; font-size: 9px;')
         layout.addWidget(hint)
 
-        self._list = QListWidget()
+        self._list = WidgetTypeList()
         self._list.setIconSize(QSize(18, 18))
         self._list.setSpacing(1)
+        self._list.setDragEnabled(True)
         self._list.itemDoubleClicked.connect(self._on_double_click)
         layout.addWidget(self._list)
 
@@ -127,7 +148,6 @@ class WidgetLibrary(QWidget):
         )
         if ok:
             self.add_widget_requested.emit(widget_type, name or f'new_{widget_type}')
-
 
 class PresetLibrary(QWidget):
     """自定义预设控件库。"""

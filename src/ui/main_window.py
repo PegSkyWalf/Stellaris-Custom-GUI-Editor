@@ -34,7 +34,7 @@ from PySide6.QtGui import QAction, QKeySequence, QFont, QColor, QPixmap, QIcon
 
 from ..core.gui_model import (
     GUIDocument, WidgetNode, parse_gui_file, parse_gui_text,
-    create_widget, WIDGET_TYPES, WIDGET_LABELS,
+    create_widget, WIDGET_TYPES, WIDGET_LABELS, CONTAINER_TYPES,
     resolve_editor_layout_sizes,
 )
 from ..core.resource_manager import ResourceManager
@@ -339,6 +339,7 @@ class MainWindow(QMainWindow):
         self._preview_mode = False
         self._vgroup_manager = VirtualGroupManager()
         self._syncing_selection = False  # guard against canvas<->layer panel selection loops
+        self._active_insertion_parent: Optional[WidgetNode] = None
         self._autosave_timer = QTimer()
         self._autosave_timer.setSingleShot(True)
         self._autosave_timer.setInterval(60000)  # 60s auto-save
@@ -807,6 +808,7 @@ class MainWindow(QMainWindow):
         # node_position_changed: only update props panel (NOT the canvas item — would cause loop)
         self._canvas.node_position_changed.connect(self._on_node_position_changed)
         self._canvas.document_modified.connect(self._on_document_modified)
+        self._canvas.widget_dropped.connect(self._on_widget_dropped)
         self._canvas.cursor_pos_changed.connect(self._on_cursor_pos)
 
         self._props_panel.property_changed.connect(self._on_property_edited)
@@ -1337,23 +1339,12 @@ class MainWindow(QMainWindow):
         if not self._current_doc:
             doc = GUIDocument(file_path='')
             self._load_document(doc)
-        # Place into currently selected container if possible
-        selected = self._canvas.gui_scene.get_selected_node()
-        parent_node = None
-        if selected is not None:
-            from ..core.gui_model import CONTAINER_TYPES
-            if selected.widget_type in CONTAINER_TYPES:
-                parent_node = selected
-            elif selected.parent and selected.parent.widget_type in CONTAINER_TYPES:
-                parent_node = selected.parent
+        parent_node = self._current_insertion_parent()
         if parent_node is not None:
-            settings = AppSettings.instance()
-            cw, ch = settings.canvas_size
-            pw, ph = self._canvas.gui_scene._layout_dims_for_parent(parent_node)
             from PySide6.QtCore import QPointF
-            center = self._canvas.gui_scene.get_item_for_node(parent_node)
-            if center:
-                scene_pos = center.mapToScene(QPointF(pw / 2, ph / 2))
+            parent_item = self._canvas.gui_scene.get_item_for_node(parent_node)
+            if parent_item:
+                scene_pos = parent_item.mapToScene(parent_item.rect().center())
             else:
                 scene_pos = self._canvas.viewport_center_scene()
             node = self._canvas.gui_scene.add_widget(widget_type, scene_pos, parent_node, name=name)
@@ -1362,7 +1353,24 @@ class MainWindow(QMainWindow):
         self._canvas.gui_scene.select_node(node)
         self._props_panel.set_node(node)
         self._layer_panel.populate(self._current_doc)
+        self._layer_panel.select_node(node)
         self._code_view.schedule_update()
+
+    def _current_insertion_parent(self) -> Optional[WidgetNode]:
+        selected = self._canvas.gui_scene.get_selected_node()
+        parent = self._insertion_parent_for_node(selected)
+        if parent is not None:
+            return parent
+        return self._insertion_parent_for_node(self._active_insertion_parent)
+
+    @staticmethod
+    def _insertion_parent_for_node(node: Optional[WidgetNode]) -> Optional[WidgetNode]:
+        if node is not None:
+            if node.widget_type in CONTAINER_TYPES:
+                return node
+            if node.parent and node.parent.widget_type in CONTAINER_TYPES:
+                return node.parent
+        return None
 
     def _delete_widget(self):
         self._canvas.gui_scene.delete_selected()
@@ -1489,6 +1497,7 @@ class MainWindow(QMainWindow):
                 # Multi-select
                 count = len(node_or_list)
                 self._props_panel.set_node(None)
+                self._active_insertion_parent = None
                 self._sel_count_label.setText(_('已选中 ') + str(count) + _(' 个控件'))
                 self._pos_label.setText('')
                 self._sprite_label.setText('')
@@ -1499,6 +1508,7 @@ class MainWindow(QMainWindow):
             elif isinstance(node_or_list, WidgetNode):
                 node = node_or_list
                 self._props_panel.set_node(node)
+                self._active_insertion_parent = self._insertion_parent_for_node(node)
                 self._sel_count_label.setText('')
                 x, y = node.position
                 w, h = self._status_display_wh(node)
@@ -1520,6 +1530,7 @@ class MainWindow(QMainWindow):
                 self._layer_panel.select_node(node)
             else:
                 self._props_panel.set_node(None)
+                self._active_insertion_parent = None
                 self._sel_count_label.setText('')
                 self._pos_label.setText('')
                 self._sprite_label.setText('')
@@ -1534,6 +1545,14 @@ class MainWindow(QMainWindow):
             x, y = node.position
             w, h = self._status_display_wh(node)
             self._pos_label.setText(f'x:{x}  y:{y}  w:{w}  h:{h}  [{node.widget_type}]')
+            sprite = node.get_sprite_name()
+            if sprite:
+                rm = ResourceManager.instance()
+                mode = rm.get_widget_render_mode(node)
+                type_str = _('9块') if mode == 'nine_patch' else _('固定')
+                self._sprite_label.setText(_('精灵[') + type_str + _(']: ') + sprite)
+            else:
+                self._sprite_label.setText('')
             self._layer_panel.refresh_item(node)
 
     def _on_widget_renamed(self, old_name: str, new_name: str):
@@ -1544,6 +1563,9 @@ class MainWindow(QMainWindow):
             self._vgroup_panel.refresh()
 
     def _on_property_edited(self, node: WidgetNode):
+        node.mark_source_modified()
+        if self._current_doc:
+            self._current_doc.modified = True
         scene = self._canvas.gui_scene
         if self._current_doc:
             cw, ch = AppSettings.instance().canvas_size
@@ -1559,6 +1581,7 @@ class MainWindow(QMainWindow):
         # force_update 立即刷新代码视图，确保在 auto-apply 定时器触发前代码已是最新状态
         self._code_view.force_update()
         self._layer_panel.refresh_item(node)
+        self._on_document_modified()
 
     def _status_display_wh(self, node: WidgetNode) -> Tuple[int, int]:
         """Width/height for status bar: use canvas item for implicit containers."""
@@ -1681,7 +1704,6 @@ class MainWindow(QMainWindow):
             return
         rm = ResourceManager.instance()
         info = rm.get_sprite(sprite_name)
-        from ..core.gui_model import CONTAINER_TYPES
         if node.widget_type in CONTAINER_TYPES:
             # Containers have no sprite properties directly — modify background sub-block
             bg = node.properties.get('background', {})
@@ -1691,16 +1713,23 @@ class MainWindow(QMainWindow):
             bg['quadTextureSprite'] = sprite_name
             node.properties['background'] = bg
             self._status.showMessage(_('已设置容器背景精灵图: ') + sprite_name)
-        elif info and info.is_scalable():
+        elif node.widget_type != 'iconType' and info and info.is_scalable():
             node.properties.pop('spriteType', None)
             node.properties['quadTextureSprite'] = sprite_name
             self._status.showMessage(_('已分配精灵图 (可拉伸): ') + sprite_name)
         else:
             node.properties.pop('quadTextureSprite', None)
             node.properties['spriteType'] = sprite_name
-            self._status.showMessage(_('已分配精灵图 (固定): ') + sprite_name)
+            if node.widget_type == 'iconType':
+                self._status.showMessage(_('已分配精灵图 (iconType 使用 spriteType): ') + sprite_name)
+            else:
+                self._status.showMessage(_('已分配精灵图 (固定): ') + sprite_name)
+        node.mark_source_modified()
+        if self._current_doc:
+            self._current_doc.modified = True
         self._props_panel.refresh_from_node(node)
         self._canvas.gui_scene.refresh_item(node)
+        self._code_view.force_update()
 
     def _apply_code(self, code: str):
         if not self._current_doc:
@@ -1727,6 +1756,7 @@ class MainWindow(QMainWindow):
             if node:
                 self._canvas.gui_scene.select_node(node)
                 self._props_panel.set_node(node)
+                self._active_insertion_parent = self._insertion_parent_for_node(node)
                 # Update status bar info
                 x, y = node.position
                 w, h = self._status_display_wh(node)
@@ -1757,28 +1787,74 @@ class MainWindow(QMainWindow):
             self._on_lock_changed(child, locked)
 
     def _on_order_changed(self, node: WidgetNode, delta: int):
-        if delta != 0:
-            self._canvas.gui_scene.move_widget_order(node, delta)
+        self._canvas.gui_scene.move_widget_order(node, delta)
         # Refresh layer panel
         self._layer_panel.populate(self._current_doc)
         if self._current_doc:
             self._current_doc.modified = True
-        self._code_view.schedule_update()
+        self._code_view.force_update()
 
     def _on_layer_structure_changed(self):
         """Called when drag-drop in layer panel changes the widget tree structure."""
         if not self._current_doc:
             return
+        moves = self._layer_panel.take_last_structure_moves()
+        self._preserve_scene_positions_after_layer_moves(moves)
         self._reload_canvas_keep_state()
         self._current_doc.modified = True
-        self._code_view.schedule_update()
+        self._code_view.force_update()
         self._status.showMessage(_('图层结构已更新。'))
+
+    def _preserve_scene_positions_after_layer_moves(self, moves: list):
+        """Keep visual scene positions stable after layer drag/drop reparents nodes."""
+        if not moves:
+            return
+        from ..core.gui_model import reverse_compute_position, effective_origo
+        scene = self._canvas.gui_scene
+        rm = ResourceManager.instance()
+        cw, ch = AppSettings.instance().canvas_size
+
+        for node, _old_info, new_info in moves:
+            old_item = scene.get_item_for_node(node)
+            if not old_item:
+                continue
+            scene_pos = old_item.mapToScene(old_item.rect().topLeft())
+            parent_node = node.parent
+            local_x, local_y = scene_pos.x(), scene_pos.y()
+            if parent_node is not None:
+                parent_item = scene.get_item_for_node(parent_node)
+                if parent_item:
+                    parent_scene_pos = parent_item.mapToScene(parent_item.rect().topLeft())
+                    local_x -= parent_scene_pos.x()
+                    local_y -= parent_scene_pos.y()
+            pw, ph = scene._layout_dims_for_parent(parent_node)
+            dw, dh = scene._get_display_size(node, rm)
+            node.position = reverse_compute_position(
+                local_x, local_y, pw, ph, dw, dh,
+                node.orientation, effective_origo(node),
+            )
+            node.mark_source_modified()
 
     def _on_node_position_changed(self, node: WidgetNode):
         """Called when a widget is dragged/resized in the canvas.
         Only refreshes the properties panel — never triggers canvas refresh (avoids loop)."""
         self._props_panel.refresh_from_node(node)
         self._code_view.schedule_update()
+
+    def _on_widget_dropped(self, node: WidgetNode):
+        if self._current_doc is None and self._canvas.gui_scene.doc is not None:
+            self._current_doc = self._canvas.gui_scene.doc
+            self._saved_doc_copy = copy.deepcopy(self._current_doc)
+            self._code_view.set_document(self._current_doc)
+            self._props_panel.set_doc(self._current_doc)
+            self._vgroup_manager = VirtualGroupManager()
+            self._vgroup_panel.set_doc(self._current_doc, self._vgroup_manager)
+            self._warnings_panel.set_doc(self._current_doc)
+        self._props_panel.set_node(node)
+        self._active_insertion_parent = self._insertion_parent_for_node(node)
+        self._layer_panel.populate(self._current_doc)
+        self._layer_panel.select_node(node)
+        self._code_view.force_update()
 
     def _on_cursor_pos(self, x: float, y: float):
         """Show scene coordinates in status bar."""

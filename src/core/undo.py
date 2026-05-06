@@ -95,22 +95,33 @@ class AddWidgetCommand(Command):
         self.node._source_modified = True
         if self.parent:
             self.parent._source_modified = True
+            if self.node in self.parent.children:
+                self.node.parent = self.parent
+                return
             if self.insert_index >= 0:
-                self.parent.insert_child(self.insert_index, self.node)
+                idx = min(self.insert_index, len(self.parent.children))
+                self.parent.insert_child(idx, self.node)
             else:
                 self.parent.add_child(self.node)
         else:
+            if self.node in self.doc.roots:
+                self.node.parent = None
+                return
             if self.insert_index >= 0:
-                self.doc.roots.insert(self.insert_index, self.node)
+                idx = min(self.insert_index, len(self.doc.roots))
+                self.doc.roots.insert(idx, self.node)
             else:
                 self.doc.roots.append(self.node)
+            self.node.parent = None
 
     def undo(self):
         if self.parent:
             self.parent._source_modified = True
-            self.parent.remove_child(self.node)
-        elif self.node in self.doc.roots:
-            self.doc.roots.remove(self.node)
+            while self.node in self.parent.children:
+                self.parent.remove_child(self.node)
+        else:
+            while self.node in self.doc.roots:
+                self.doc.roots.remove(self.node)
         self.node.parent = None
 
 
@@ -129,13 +140,16 @@ class DeleteWidgetCommand(Command):
                 self.index = self.parent.children.index(self.node)
             except ValueError:
                 self.index = -1
-            self.parent.remove_child(self.node)
+            while self.node in self.parent.children:
+                self.parent.remove_child(self.node)
         elif self.node in self.doc.roots:
             try:
                 self.index = self.doc.roots.index(self.node)
             except ValueError:
                 self.index = -1
-            self.doc.roots.remove(self.node)
+            while self.node in self.doc.roots:
+                self.doc.roots.remove(self.node)
+            self.node.parent = None
 
     def undo(self):
         if self.parent:
@@ -160,26 +174,36 @@ class DuplicateWidgetCommand(Command):
 
     def execute(self):
         from .gui_model import make_names_unique
-        self.clone = self.original.clone()
-        # 自动生成唯一名称
-        existing = {w.name for w in self.doc.all_widgets() if w.name}
-        make_names_unique(self.clone, existing)
+        if self.clone is None:
+            self.clone = self.original.clone()
+            # 自动生成唯一名称
+            existing = {w.name for w in self.doc.all_widgets() if w.name}
+            make_names_unique(self.clone, existing)
+            x, y = self.clone.position
+            self.clone.position = (x + 16, y + 16)
         self.clone._source_modified = True
-        x, y = self.clone.position
-        self.clone.position = (x + 16, y + 16)
         if self.original.parent:
             self.original.parent._source_modified = True
-            self.original.parent.add_child(self.clone)
+            if self.clone not in self.original.parent.children:
+                self.original.parent.add_child(self.clone)
+            else:
+                self.clone.parent = self.original.parent
         else:
-            self.doc.roots.append(self.clone)
+            if self.clone not in self.doc.roots:
+                self.doc.roots.append(self.clone)
+            self.clone.parent = None
 
     def undo(self):
         if self.clone:
             if self.clone.parent:
-                self.clone.parent._source_modified = True
-                self.clone.parent.remove_child(self.clone)
-            elif self.clone in self.doc.roots:
-                self.doc.roots.remove(self.clone)
+                parent = self.clone.parent
+                parent._source_modified = True
+                while self.clone in parent.children:
+                    parent.remove_child(self.clone)
+            else:
+                while self.clone in self.doc.roots:
+                    self.doc.roots.remove(self.clone)
+                self.clone.parent = None
 
 
 class CompoundCommand(Command):

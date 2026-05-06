@@ -64,6 +64,32 @@ def _retab(text: str, indent_unit: str) -> str:
     return '\n'.join(result)
 
 
+def _shift_indent(text: str, old_level: int, new_level: int,
+                  indent_unit: str) -> str:
+    """Move a source block to a new indentation level while preserving body text."""
+    delta = int(new_level) - int(old_level)
+    lines = text.split('\n')
+    result = []
+    for line in lines:
+        if not line.strip():
+            result.append(line)
+            continue
+        stripped = line.lstrip(' \t')
+        leading = line[:len(line) - len(stripped)]
+        if '\t' in leading:
+            cur = leading.count('\t')
+        elif leading:
+            unit_len = len(indent_unit) if indent_unit and indent_unit != '\t' else 4
+            cur = len(leading) // unit_len
+        else:
+            # Source spans begin at the widget keyword and often do not include
+            # the original line indentation. Treat such lines as if they were at
+            # old_level so moving/reordering can still apply the target level.
+            cur = old_level
+        result.append(indent_unit * max(0, cur + delta) + stripped)
+    return '\n'.join(result)
+
+
 def _format_value(val: Any, level: int = 0) -> str:
     """Format a Python value to PDX script representation."""
     if isinstance(val, bool):
@@ -159,7 +185,7 @@ _PROPERTY_ORDER = [
 # Sub-block property keys (stored as dicts, written as blocks)
 _PROPERTY_BLOCK_KEYS = {
     'background', 'track', 'slider', 'increaseButton', 'decreaseButton',
-    'animation', 'expandButton', 'expandedWindow',
+    'animation',
 }
 
 # Keys that ARE child widget types (not property blocks)
@@ -169,8 +195,19 @@ _CHILD_WIDGET_KEYS = {
     'listboxType', 'scrollAreaType', 'overlappingElementsBoxType',
     'gridBoxType', 'smoothListboxType', 'extendedScrollbarType',
     'scrollbarType', 'dropDownBoxType', 'positionType',
-    'OverlappingElementsBoxType',
+    'expandButton', 'expandedWindow', 'guiButtonType', 'spinnerType',
+    'windowType', 'OverlappingElementsBoxType',
 }
+
+
+def _serializable_widget_properties(node: WidgetNode) -> Dict[str, Any]:
+    """Return properties adjusted for widget-type-specific GUI syntax."""
+    props = dict(node.properties)
+    if node.widget_type == 'iconType':
+        quad_sprite = props.pop('quadTextureSprite', None)
+        if quad_sprite and not props.get('spriteType'):
+            props['spriteType'] = quad_sprite
+    return props
 
 
 def write_property_block(key: str, val: Dict[str, Any], level: int) -> List[str]:
@@ -199,7 +236,7 @@ def write_widget(node: WidgetNode, level: int = 1) -> List[str]:
 
     lines.append(f'{ind}{node.widget_type} = {{')
 
-    props = node.properties
+    props = _serializable_widget_properties(node)
     written = set()
 
     # Write in order
@@ -325,8 +362,10 @@ def write_document_preserving(doc: GUIDocument) -> str:
     existing_roots = [(s, e, r) for s, e, r in root_entries if s is not None]
     new_roots = [r for s, e, r in root_entries if s is None]
 
-    # 按 span 位置排序
-    existing_roots.sort(key=lambda x: x[0])
+    root_order_changed = _sibling_order_changed_from_source(doc.roots)
+    if not root_order_changed:
+        # 未重排时按 span 位置排序，保持 patch 操作稳定。
+        existing_roots.sort(key=lambda x: x[0])
 
     # 构建 patch 列表
     patches = []  # (start, end, replacement)
@@ -355,6 +394,33 @@ def write_document_preserving(doc: GUIDocument) -> str:
         # 在 guiTypes 内部末尾插入（闭合 } 之前）
         patches.append((inner_end, inner_end, insert_text))
 
+    if root_order_changed:
+        indent_unit = _detect_indent_unit(raw)
+        ordered_parts = []
+        for root in doc.roots:
+            if root._source_span:
+                old_level = _detect_indent_level(raw, root._source_span.start)
+                ordered_parts.append(
+                    _shift_indent(
+                        _patch_widget_recursive(root, raw, old_level),
+                        old_level,
+                        1,
+                        indent_unit,
+                    )
+                )
+            else:
+                ordered_parts.append(_retab('\n'.join(write_widget(root, level=1)), indent_unit))
+        replacement = '\n\n' + '\n\n'.join(part.rstrip('\n') for part in ordered_parts) + '\n'
+        patches.append((inner_start, inner_end, replacement))
+        # 整体替换 guiTypes 内部时，不能再对根节点逐个 patch / 删除，否则 patch 区间会重叠。
+        patches = [(inner_start, inner_end, replacement)]
+        if not patches:
+            return raw
+        result = raw
+        for start, end, replacement in sorted(patches, key=lambda p: p[0], reverse=True):
+            result = result[:start] + replacement + result[end:]
+        return result
+
     # 检查是否有被删除的 widget，并将删除操作转换为 patch（而非 fallback 到 write_document）
     # 使用加载时记录的原始根节点 span 列表，找出当前不在 doc.roots 中的 span → 已删除
     current_spans = set((s, e) for s, e, r in existing_roots)
@@ -376,6 +442,20 @@ def write_document_preserving(doc: GUIDocument) -> str:
         result = result[:start] + replacement + result[end:]
 
     return result
+
+
+def _sibling_order_changed_from_source(nodes: List[WidgetNode]) -> bool:
+    """True when current sibling order cannot be represented by appending new nodes."""
+    spans = []
+    seen_new_node = False
+    for node in nodes:
+        if node._source_span:
+            if seen_new_node:
+                return True
+            spans.append(node._source_span.start)
+        else:
+            seen_new_node = True
+    return spans != sorted(spans)
 
 
 def _expand_blank_lines(raw: str, span_start: int, span_end: int) -> int:
@@ -402,7 +482,7 @@ def _write_widget_header(node: WidgetNode, level: int) -> List[str]:
     ind = _indent(level)
     ind1 = _indent(level + 1)
     lines = [f'{ind}{node.widget_type} = {{']
-    props = node.properties
+    props = _serializable_widget_properties(node)
     written = set()
     for key in _PROPERTY_ORDER:
         if key in props:
@@ -462,6 +542,26 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
         if not children_with_spans:
             # 没有子节点有 span（叶节点或全新子节点）→ 完全重新生成，但匹配文件缩进风格
             return _retab('\n'.join(write_widget(node, level=level)), _detect_indent_unit(raw))
+
+        if _sibling_order_changed_from_source(node.children):
+            indent_unit = _detect_indent_unit(raw)
+            child_parts = []
+            for child in node.children:
+                if child._source_span:
+                    old_level = _detect_indent_level(raw, child._source_span.start)
+                    child_text = _patch_widget_recursive(child, raw, old_level)
+                    child_parts.append(
+                        _shift_indent(child_text, old_level, level + 1, indent_unit)
+                    )
+                else:
+                    child_parts.append(
+                        _retab('\n'.join(write_widget(child, level=level + 1)), indent_unit)
+                    )
+            new_header = '\n'.join(_write_widget_header(node, level))
+            close_line = _indent(level) + '}'
+            if child_parts:
+                return new_header + '\n\n' + '\n\n'.join(p.rstrip('\n') for p in child_parts) + '\n' + close_line
+            return new_header + '\n' + close_line
 
         # 找到第一个子节点所在行的起始位置
         first_child_abs_start = children_with_spans[0][1]
@@ -541,6 +641,26 @@ def _patch_widget_recursive(node: WidgetNode, raw: str, level: int) -> str:
                 child_patches.append((rel_start, rel_end, child_text))
         else:
             new_children.append(child)
+
+    if _sibling_order_changed_from_source(node.children):
+        indent_unit = _detect_indent_unit(raw)
+        header = '\n'.join(_write_widget_header(node, level))
+        child_parts = []
+        for child in node.children:
+            if child._source_span:
+                old_level = _detect_indent_level(raw, child._source_span.start)
+                child_text = _patch_widget_recursive(child, raw, old_level)
+                child_parts.append(
+                    _shift_indent(child_text, old_level, level + 1, indent_unit)
+                )
+            else:
+                child_parts.append(
+                    _retab('\n'.join(write_widget(child, level=level + 1)), indent_unit)
+                )
+        close_line = _indent(level) + '}'
+        if child_parts:
+            return header + '\n\n' + '\n\n'.join(p.rstrip('\n') for p in child_parts) + '\n' + close_line
+        return header + '\n' + close_line
 
     # 如果有被删除的子节点，需要检测并移除它们
     # （已被删除的子节点不在 node.children 中，但它们的原始文本还在 widget_source 中）

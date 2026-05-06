@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from .logger import get_logger
 _log = get_logger('resource_manager')
 
-from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtGui import QColor, QPixmap, QImage
 from PySide6.QtCore import QRect
 
 from .pdx_parser import parse_file, ParseError, pairs_to_dict
@@ -53,6 +53,7 @@ class SpriteInfo:
         self.natural_height = height
         self._priority = 0
         self.source_file: str = ''  # .gfx file that defines this sprite
+        self.source_scope: str = ''  # vanilla / current_mod / dependency
 
     def is_scalable(self) -> bool:
         """True if this sprite stretches to fit size (corneredTileSpriteType)."""
@@ -122,11 +123,13 @@ class ResourceManager:
             return
         iface_dir = os.path.join(game_dir, 'interface')
         if os.path.isdir(iface_dir):
-            self._index_interface_dir(iface_dir, priority=0, cancel_event=cancel_event)
+            self._index_interface_dir(iface_dir, priority=0, cancel_event=cancel_event,
+                                      source_scope='vanilla')
         if cancel_event and cancel_event.is_set():
             _log.info("load_game_dir: 在 interface 扫描后收到取消信号")
             return
-        self._index_gfx_directory(game_dir, priority=0, cancel_event=cancel_event)
+        self._index_gfx_directory(game_dir, priority=0, cancel_event=cancel_event,
+                                  source_scope='vanilla')
         if cancel_event and cancel_event.is_set():
             _log.info("load_game_dir: 在 gfx 扫描后收到取消信号")
             return
@@ -146,11 +149,13 @@ class ResourceManager:
             return
         iface_dir = os.path.join(mod_dir, 'interface')
         if os.path.isdir(iface_dir):
-            self._index_interface_dir(iface_dir, priority=1, cancel_event=cancel_event)
+            self._index_interface_dir(iface_dir, priority=100, cancel_event=cancel_event,
+                                      source_scope='current_mod')
         if cancel_event and cancel_event.is_set():
             _log.info("load_mod_dir: 在 interface 扫描后收到取消信号")
             return
-        self._index_gfx_directory(mod_dir, priority=1, cancel_event=cancel_event)
+        self._index_gfx_directory(mod_dir, priority=100, cancel_event=cancel_event,
+                                  source_scope='current_mod')
         if cancel_event and cancel_event.is_set():
             _log.info("load_mod_dir: 在 gfx 扫描后收到取消信号")
             return
@@ -177,13 +182,15 @@ class ResourceManager:
             return
         if extra_mod_dir not in self._extra_mod_dirs:
             self._extra_mod_dirs.append(extra_mod_dir)
-        prio = max(0, len(self._extra_mod_dirs) - 1)
+        prio = 10 + self._extra_mod_dirs.index(extra_mod_dir)
         iface_dir = os.path.join(extra_mod_dir, 'interface')
         if os.path.isdir(iface_dir):
-            self._index_interface_dir(iface_dir, priority=prio, cancel_event=cancel_event)
+            self._index_interface_dir(iface_dir, priority=prio, cancel_event=cancel_event,
+                                      source_scope='dependency')
         if cancel_event and cancel_event.is_set():
             return
-        self._index_gfx_directory(extra_mod_dir, priority=prio, cancel_event=cancel_event)
+        self._index_gfx_directory(extra_mod_dir, priority=prio, cancel_event=cancel_event,
+                                  source_scope='dependency')
         if cancel_event and cancel_event.is_set():
             return
         loc_dir = os.path.join(extra_mod_dir, 'localisation')
@@ -214,7 +221,8 @@ class ResourceManager:
             yield dirpath, dirnames, filenames
 
     def _index_interface_dir(self, iface_dir: str, priority: int,
-                             cancel_event: Optional[threading.Event] = None):
+                             cancel_event: Optional[threading.Event] = None,
+                             source_scope: str = ''):
         t0 = time.monotonic()
         gui_count = gfx_count = 0
         _log.debug("扫描 interface 目录: %s", iface_dir)
@@ -236,7 +244,7 @@ class ResourceManager:
                     _log.debug("    解析 GFX: %s", fname)
                     tf = time.monotonic()
                     self._gfx_files[fname] = fpath
-                    self._parse_gfx_file(fpath, priority)
+                    self._parse_gfx_file(fpath, priority, source_scope)
                     elapsed = time.monotonic() - tf
                     if elapsed > 1.0:
                         _log.warning("GFX 解析耗时过长 %.2fs: %s", elapsed, fpath)
@@ -263,7 +271,8 @@ class ResourceManager:
     _GFX_MAX_FILE_BYTES = 512 * 1024   # 512 KB — sprite defs are never this large
 
     def _index_gfx_directory(self, root: str, priority: int,
-                             cancel_event: Optional[threading.Event] = None):
+                             cancel_event: Optional[threading.Event] = None,
+                             source_scope: str = ''):
         """Walk gfx/ for .gfx files so text icons and sprites work when defined outside interface/.
         Skips gfx/models/ and similar directories that only contain 3D mesh definitions."""
         gfx_root = os.path.join(root, 'gfx')
@@ -304,7 +313,7 @@ class ResourceManager:
                 _log.debug("    解析 GFX: %s", fname)
                 tf = time.monotonic()
                 self._gfx_files[fpath] = fpath
-                self._parse_gfx_file(fpath, priority)
+                self._parse_gfx_file(fpath, priority, source_scope)
                 elapsed = time.monotonic() - tf
                 if elapsed > 1.0:
                     _log.warning("GFX 解析耗时过长 %.2fs: %s", elapsed, fpath)
@@ -327,14 +336,14 @@ class ResourceManager:
                 return canon
         return None
 
-    def _parse_gfx_file(self, gfx_path: str, priority: int):
+    def _parse_gfx_file(self, gfx_path: str, priority: int, source_scope: str = ''):
         try:
             pairs = parse_file(gfx_path)
         except Exception as e:
             _log.warning("解析 GFX 文件失败: %s — %s", gfx_path, e)
             return
         before = len(self._sprites)
-        self._register_sprites_from_gfx_pairs(pairs, priority, gfx_path)
+        self._register_sprites_from_gfx_pairs(pairs, priority, gfx_path, source_scope)
         added = len(self._sprites) - before
         if added:
             _log.debug("    %s: 注册 %d 个精灵图", os.path.basename(gfx_path), added)
@@ -342,7 +351,8 @@ class ResourceManager:
         if os.path.basename(gfx_path).lower() == 'fonts.gfx':
             self._parse_fonts_gfx_colors(gfx_path)
 
-    def _register_sprites_from_gfx_pairs(self, pairs: list, priority: int, source_file: str = ''):
+    def _register_sprites_from_gfx_pairs(self, pairs: list, priority: int,
+                                         source_file: str = '', source_scope: str = ''):
         """Register sprite* blocks: spriteTypes = { ... }, or top-level spriteType = { ... }."""
         if not isinstance(pairs, list):
             return
@@ -350,13 +360,14 @@ class ResourceManager:
             if not isinstance(key, str):
                 continue
             if key.lower() == 'spritetypes' and isinstance(val, list):
-                self._register_sprites_from_gfx_pairs(val, priority, source_file)
+                self._register_sprites_from_gfx_pairs(val, priority, source_file, source_scope)
                 continue
             canon = self._normalize_sprite_block_key(key)
             if canon and isinstance(val, list):
-                self._register_sprite(canon, val, priority, source_file)
+                self._register_sprite(canon, val, priority, source_file, source_scope)
 
-    def _register_sprite(self, sprite_type: str, pairs: list, priority: int, source_file: str = ''):
+    def _register_sprite(self, sprite_type: str, pairs: list, priority: int,
+                         source_file: str = '', source_scope: str = ''):
         d = pairs_to_dict(pairs)
         name = d.get('name')
         if not name or not isinstance(name, str):
@@ -394,6 +405,7 @@ class ResourceManager:
         )
         info._priority = priority
         info.source_file = source_file
+        info.source_scope = source_scope
         self._sprites[name] = info
 
     def _parse_fonts_gfx_colors(self, gfx_path: str):
@@ -837,8 +849,10 @@ class ResourceManager:
     def get_sprite(self, name: str) -> Optional[SpriteInfo]:
         return self._sprites.get(name)
 
-    def get_all_sprites(self) -> List[SpriteInfo]:
-        return list(self._sprites.values())
+    def get_all_sprites(self, scopes: Optional[Set[str]] = None) -> List[SpriteInfo]:
+        if not scopes:
+            return list(self._sprites.values())
+        return [info for info in self._sprites.values() if info.source_scope in scopes]
 
     def get_sprite_names(self) -> List[str]:
         return sorted(self._sprites.keys())
@@ -1375,6 +1389,14 @@ class ResourceManager:
           'nine_patch' - corneredTileSpriteType, use widget size + 9-patch
           'fixed'      - spriteType (fixed size), use natural size × scale
         """
+        props = getattr(node, 'properties', {})
+        if getattr(node, 'widget_type', '') == 'iconType':
+            sprite_name = props.get('spriteType') if isinstance(props, dict) else None
+            if not sprite_name:
+                return 'none'
+            sprite_name = str(sprite_name).strip().strip('"')
+            return 'fixed'
+
         sprite_name = None
         if hasattr(node, 'get_sprite_name'):
             sprite_name = node.get_sprite_name()
@@ -1386,13 +1408,13 @@ class ResourceManager:
         # Check the actual GFX registry type — if the registered sprite is a
         # corneredTileSpriteType (is_scalable), render as nine_patch regardless
         # of whether the GUI file used spriteType or quadTextureSprite.
-        if hasattr(node, 'properties'):
-            if node.properties.get('spriteType'):
+        if isinstance(props, dict):
+            if props.get('spriteType'):
                 # spriteType in GUI but if GFX registry says it's corneredTile → nine_patch
                 if info and info.is_scalable():
                     return 'nine_patch'
                 return 'fixed'
-            if node.properties.get('quadTextureSprite'):
+            if props.get('quadTextureSprite'):
                 if info and info.is_scalable():
                     return 'nine_patch'
                 return 'fixed'

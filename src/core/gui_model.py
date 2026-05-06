@@ -555,6 +555,11 @@ class WidgetNode:
 
     # ---- sprite ----
     def get_sprite_name(self) -> Optional[str]:
+        if self.widget_type == 'iconType':
+            v = self.properties.get('spriteType')
+            if v and isinstance(v, str):
+                return v.strip().strip('"')
+            return None
         for key in ('spriteType', 'quadTextureSprite'):
             v = self.properties.get(key)
             if v and isinstance(v, str):
@@ -614,6 +619,8 @@ class WidgetNode:
 
     def is_quad_sprite(self) -> bool:
         """True if widget uses quadTextureSprite (scalable, uses size property)."""
+        if self.widget_type == 'iconType':
+            return False
         return bool(self.properties.get('quadTextureSprite'))
 
     def get_background(self) -> Optional[Dict[str, Any]]:
@@ -664,6 +671,8 @@ class WidgetNode:
     def is_subtree_modified(self) -> bool:
         """检查此节点或其任何后代是否被编辑器修改过。"""
         if self._source_modified:
+            return True
+        if self._source_span and any(child._source_span is None for child in self.children):
             return True
         return any(child.is_subtree_modified() for child in self.children)
 

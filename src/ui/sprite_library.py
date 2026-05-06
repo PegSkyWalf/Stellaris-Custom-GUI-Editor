@@ -83,11 +83,15 @@ class SpriteLibrary(QWidget):
     _FILTER_ALL = 0
     _FILTER_FIXED = 1
     _FILTER_SCALABLE = 2
+    _SCOPE_PRIMARY = 0
+    _SCOPE_CURRENT_ONLY = 1
+    _SCOPE_ALL = 2
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._all_items: List[SpriteListItem] = []
         self._filter_mode = self._FILTER_ALL
+        self._scope_mode = self._SCOPE_PRIMARY
         self._search_text = ''
         self._icon_load_timer = QTimer()
         self._icon_load_timer.setSingleShot(True)
@@ -168,6 +172,30 @@ class SpriteLibrary(QWidget):
         filter_row.addWidget(self._btn_scalable)
         filter_row.addStretch()
         layout.addLayout(filter_row)
+
+        scope_row = QHBoxLayout()
+        scope_row.setSpacing(2)
+        scope_label = QLabel(_('范围:'))
+        scope_label.setStyleSheet(f'font-size:9px; color:{ThemeManager.muted_color()};')
+        scope_row.addWidget(scope_label)
+        self._btn_scope_primary = QPushButton(_('当前+原版'))
+        self._btn_scope_current = QPushButton(_('仅当前'))
+        self._btn_scope_all = QPushButton(_('全部资源'))
+        for btn in (self._btn_scope_primary, self._btn_scope_current, self._btn_scope_all):
+            btn.setCheckable(True)
+        self._btn_scope_primary.setChecked(True)
+        self._scope_btn_group = QButtonGroup(self)
+        self._scope_btn_group.addButton(self._btn_scope_primary, self._SCOPE_PRIMARY)
+        self._scope_btn_group.addButton(self._btn_scope_current, self._SCOPE_CURRENT_ONLY)
+        self._scope_btn_group.addButton(self._btn_scope_all, self._SCOPE_ALL)
+        self._scope_btn_group.setExclusive(True)
+        self._scope_btn_group.idToggled.connect(self._on_scope_toggled)
+        scope_row.addWidget(self._btn_scope_primary)
+        scope_row.addWidget(self._btn_scope_current)
+        scope_row.addWidget(self._btn_scope_all)
+        scope_row.addStretch()
+        layout.addLayout(scope_row)
+        self._update_scope_button_styles()
 
         # ── 主 Splitter ──────────────────────────────────────────────────
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -272,7 +300,7 @@ class SpriteLibrary(QWidget):
 
     def populate(self):
         rm = ResourceManager.instance()
-        sprites = rm.get_all_sprites()
+        sprites = rm.get_all_sprites(self._scope_filter())
         self._list.clear()
         self._all_items.clear()
         for info in sorted(sprites, key=lambda s: s.name):
@@ -283,6 +311,13 @@ class SpriteLibrary(QWidget):
             self._all_items.append(item)
         self._stats_badge.setText(str(len(sprites)))
         self._apply_filter()  # 内部会启动 icon_load_timer
+
+    def _scope_filter(self):
+        if self._scope_mode == self._SCOPE_ALL:
+            return None
+        if self._scope_mode == self._SCOPE_CURRENT_ONLY:
+            return {'current_mod'}
+        return {'current_mod', 'vanilla'}
 
     def get_selected_sprite_name(self) -> Optional[str]:
         item = self._list.currentItem()
@@ -347,6 +382,19 @@ class SpriteLibrary(QWidget):
         self._btn_fixed.setStyleSheet(btn_style_a if btn_id == self._FILTER_FIXED else btn_style_i)
         self._btn_scalable.setStyleSheet(btn_style_a if btn_id == self._FILTER_SCALABLE else btn_style_i)
         self._apply_filter()
+
+    def _on_scope_toggled(self, btn_id: int, checked: bool):
+        if not checked:
+            return
+        self._scope_mode = btn_id
+        self._update_scope_button_styles()
+        self.populate()
+
+    def _update_scope_button_styles(self):
+        active, inactive = self._filter_btn_styles()
+        self._btn_scope_primary.setStyleSheet(active if self._scope_mode == self._SCOPE_PRIMARY else inactive)
+        self._btn_scope_current.setStyleSheet(active if self._scope_mode == self._SCOPE_CURRENT_ONLY else inactive)
+        self._btn_scope_all.setStyleSheet(active if self._scope_mode == self._SCOPE_ALL else inactive)
 
     def _load_visible_icons(self):
         viewport_rect = self._list.viewport().rect()
