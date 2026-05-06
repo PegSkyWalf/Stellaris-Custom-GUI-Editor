@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/UI-PySide6-informational.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.2.0-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.1-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
 
 ---
 
@@ -216,7 +216,7 @@ A：日志文件位于 `C:\Users\用户名\.stellaris_gui_editor\logs\`，提交
 A **visual custom GUI editor** for *Stellaris* mod creators. Drag-and-drop widgets on a 1920×1080 canvas, preview DDS sprites in real-time, and auto-generate `.gui` script files — no manual scripting needed.
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.2.0-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.1-orange.svg)](https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/releases)
 
 > 🔒 **Always back up your `.gui` files before editing.** This tool modifies files directly. Work on a copy of your mod, never on unbackedup originals.
 

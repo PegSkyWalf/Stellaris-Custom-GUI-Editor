@@ -16,6 +16,26 @@
 
 ---
 
+## [1.5.1] - 2026-05-06
+
+### 修复
+
+- **撤销/重做后画布控件瞬时错位**：修复撤销快照中节点对象重复引用的问题，避免恢复历史状态后画布、图层树与代码视图引用到旧对象或共享对象。
+- **容器裁切、刷新后布局偏移**：补齐容器隐式尺寸解析与刷新路径的稳定性处理，减少修改 `clipping`、手动刷新和重新渲染后子控件位置被错误换算的问题。
+- **图层重排后代码视图跳转错误控件**：图层移动与拖拽重排后重新同步结构路径和源码修改标记，修复点击控件时高亮跳到完全错误节点的问题。
+- **图层上移/下移语义与 Z 顺序混乱**：统一图层面板按钮、树结构顺序和画布绘制顺序，避免层级切换后出现视觉顺序与数据顺序不一致。
+- **控件库插入位置不符合选中容器**：当图层视图中选中容器时，从控件库创建的新控件会插入该容器内部。
+- **控件库支持拖拽到画布/容器**：控件类型可直接拖入画布；拖放到已有容器区域时在该容器内创建，并按容器局部坐标落位。
+- **精灵图库资源范围过宽**：默认仅显示当前加载模组与原版资源，避免误引用未加载模组中的精灵图；保留范围切换能力用于排查资源。
+- **`iconType` 精灵类型约束错误**：确认 `iconType` 不支持 `quadTextureSprite`，现在更改控件类型时会强制使用 `spriteType` 兼容路径。
+- **右键更改控件类型未生效**：更改类型后立即标记源码修改并触发模型、画布、代码视图同步刷新。
+
+### 文档
+
+- 新增画布、图层、精灵图库问题诊断与修复报告：`docs/canvas_layer_sprite_bugfix_report_2026-05-06.md`。
+
+---
+
 ## [1.5.0] - 2026-04-15
 
 ### 修复
@@ -268,7 +288,8 @@
 
 ---
 
-[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.2.0...v1.4.0
 [1.2.0]: https://github.com/PegSkyWalf/Stellaris-Custom-GUI-Editor/compare/v1.1.0...v1.2.0
